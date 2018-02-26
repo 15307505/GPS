@@ -1,0 +1,53 @@
+C51 COMPILER V9.52.0.0   1                                                                 12/19/2017 11:37:48 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE 1
+OBJECT MODULE PLACED IN 1.OBJ
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE 1.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #define UserADD         0X3E00   //用户数据存储在 0X3E00处 15.5K-16K 中512字节
+   2          
+   3          code unsigned char Data[50] =  //出厂设置参数   
+   4          {
+   5            //113,105,94,136,
+   6            //0x75,0x38,
+   7            //121,40,115,131,
+   8            //0X09,0X1C,
+   9            112,4,70,238,
+  10            0x23,0x2a,   //9002
+  11            0,0,         //UDP端口号 0000
+  12            0,           //0.IP方式还是1.域名方式
+  13            0,0,         //重启状态信息
+  14            0,0xbe,      //心跳时间间隔190s
+  15            0,0xb4,      //模块唤醒时间180s
+  16            0,0x1e,      //回传时间30s
+  17            1,0x2c,      //回传次数300     
+  18            0,0,         //追踪时间0分钟    
+  19            9,0,         //上传的具体时间点 9点  
+  20            4,0,         //重启信息 0 0
+  21            0,1,         // 一天上传1次            
+  22            0,0,         //终端控制类标志位  光敏  移动               
+  23            3,           //BIT0=1 打开光敏 BIT1=1 打开震动  BIT2 软件重启标志  
+  24            0,0,         //上一次上报的时间
+  25            1,0,         //服务器连接失败次数100次
+  26            0,0,0,0,     //ip地址保存
+  27            0,0          //tcp端口号保存
+  28          };
+  29          
+  30          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   ----    ----
+   CONSTANT SIZE    =     50    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

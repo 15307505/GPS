@@ -1,0 +1,518 @@
+C51 COMPILER V9.52.0.0   MAIN                                                              12/19/2017 08:58:30 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Output\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\User\main.c LARGE OPTIMIZE(9,SIZE) BROWSE INCDIR(..\Hardware\A8900;..
+                    -\Hardware\Delay;..\Hardware\EEPROM;..\Hardware\GPIO;..\Hardware\GPS;..\Hardware\MoveData;..\Hardware\Timer;..\Hardware\U
+                    -ART;..\User;..\Project) DEBUG OBJECTEXTEND PRINT(.\Listings\main.lst) TABS(2) OBJECT(.\Output\main.obj)
+
+line level    source
+
+   1          #include "string.h"
+   2          #include "delay.h"
+   3          #include "uart.h"
+   4          #include "GPIO.h"
+   5          #include "eeprom.h"
+   6          #include "A8900.h"
+   7          #include "MoveData.h"    //报警检测
+   8          #include <absacc.h>
+   9          #include "user_define.h"
+  10          #include  "Time.h"
+  11          #include  "GPS.h"
+  12          
+  13          //系统主时钟 11.0502MHZ
+  14          /*************  本地常量声明  **************/
+  15          sbit  POWKEY      = P1^7;       //开机键
+  16          sbit  RXD_0       = P3^0;       //本次项目使用不到的引脚
+  17          sbit  TXD_0       = P3^1;
+  18          sbit  X1          = P3^6;
+  19          sbit  X2          = P3^5;
+  20          sbit  X3          = P3^4;
+  21          sbit  ADC         = P3^7;
+  22          sbit  RXD_2       = P1^0;        //与GSM模块发送脚相连
+  23          sbit  TXD_2       = P1^1;        //与GSM模块接收脚相连
+  24          
+  25          /*************  本地变量声明  **************/     
+  26          u32 Fwt=0;               //内部唤醒定时器频率 15位数据
+  27          u8  Time_UART1=0;        //串口1计时器
+  28          u8  Time_UART2=0;        //串口2计时器
+  29          u8  XiangYingFlag=0;     //模块发送指令等待响应标志
+  30          u16  UART2_Start=0;      //模块发送指令超时累计
+  31          u8  InterruptFlag=0;     //中断唤醒的标志  外部中断唤醒单片机不做操作继续睡眠
+  32          u8  BuBaoJing = 0;
+  33          u16 LedCnt = 0;
+  34          u8  LedFreq = 30;        //默认上电3s闪烁  1表示 100ms闪烁 10表示1s闪烁
+  35          u8  GuZhang_Cnt,GuZhang_Time,GuZhang_Start;
+  36          struct    //实时时钟数据
+  37          {
+  38             u16 year;
+  39             u8  month;
+  40             u8  day;
+  41             u8  hour;
+  42             u8  min;
+  43             u8  sec;
+  44          }Time;
+  45          
+  46          /*************  本地函数声明  **************/
+  47          void Timer0Init(void);
+  48          void CLR_Buf2(void);
+  49          void In_LOW_Pow(void);
+  50          void Out_LOW_Pow(void);
+  51          void Low_Pw_Rtc(void);              //睡眠函数
+  52          void LowPower(void);                //掉电唤醒配置
+  53          void Get_RTC(void);
+C51 COMPILER V9.52.0.0   MAIN                                                              12/19/2017 08:58:30 PAGE 2   
+
+  54          
+  55          /*************  外部函数和变量声明*****************/
+  56          extern bdata u8 Flag;//定时器标志位
+  57          extern bit Timer0_start;          //运行指示灯;
+  58          extern u8 Times,shijian;
+  59          extern nmea_msg *gpsx;
+  60          extern u8 Heart_beat,Hui_Chuan;
+  61          extern u32 HuiChuan;
+  62          extern u8  RemoveAlarm;
+  63          extern u32 HuiChuanCnt;
+  64          
+  65          
+  66          void LowPower(void)   //掉电唤醒配置
+  67          {   
+  68   1        u32 i;
+  69   1        i = (Fwt*91)/160;  // *92就是9.2秒唤醒 1S
+  70   1      
+  71   1        WKTCL = (u8)i;
+  72   1        WKTCH = (u8)(i >> 8) | 0x80;
+  73   1      }
+  74          
+  75          void In_LOW_Pow(void) //引脚进入低功耗
+  76          {
+  77   1        GPIO_InitTypeDef  GPIO_InitStructure;
+  78   1        GPIO_InitStructure.Pin  = GPIO_Pin_0;        
+  79   1        GPIO_InitStructure.Mode = GPIO_OUT_PP;       
+  80   1        GPIO_Inilize(GPIO_P1,&GPIO_InitStructure);//与GSM模块发送相连，接收GSM数据 进入休眠时候需要将引脚设置为输
+             -出低电平
+  81   1      
+  82   1        RXD_2= 0;
+  83   1        TXD_2= 0;
+  84   1        GPRS_EN= 0;    //GSM模块断电
+  85   1        
+  86   1        ET0 = 0;      //关闭定时器0中断 
+  87   1        ET1 = 0;      //关闭定时器1中断 
+  88   1        
+  89   1        T4T3M &= 0x7F;    //关闭定时器4
+  90   1        IE2   &= 0xBF;    //关闭定时器4中断
+  91   1        
+  92   1        LowPower();       //配置掉电唤醒定时器
+  93   1        RUNING_LED = 1;
+  94   1        Module.serNum = 1; //清参数
+  95   1        Guzhang_Flag  = 0;
+  96   1        
+  97   1        if((EEPROM_Data[29]&0x01) == 1)    //打开光敏报警
+  98   1        {
+  99   2          EX1 = 1;//进入低功耗就打开光敏功能
+ 100   2          IT1 = 1;
+ 101   2        }
+ 102   1        else
+ 103   1        {
+ 104   2          EX1 = 0;
+ 105   2          IT1 = 0;
+ 106   2        } 
+ 107   1        if((EEPROM_Data[29]&0x02) == 2)  //打开震动报警
+ 108   1        {
+ 109   2          EX0 = 1;
+ 110   2        }
+ 111   1        else
+ 112   1        {
+ 113   2          EX0 = 0;
+ 114   2        }
+C51 COMPILER V9.52.0.0   MAIN                                                              12/19/2017 08:58:30 PAGE 3   
+
+ 115   1      }
+ 116          
+ 117          void Out_LOW_Pow(void) //退出低功耗
+ 118          {   
+ 119   1        
+ 120   1        Uart1Init();           //串口1初始化 115200 @11.0592MHz
+ 121   1        Uart2Init();           //串口2初始化 115200 @11.0592MHz
+ 122   1      
+ 123   1        TXD_2= 1;
+ 124   1        TXD_0= 1;
+ 125   1        T4T3M |= 0x80;         //定时器4开始计时
+ 126   1        IE2   |= 0x40;         //打开定时器4中断
+ 127   1        
+ 128   1        TR0 = 1;               //打开定时器0
+ 129   1        ET0 = 1;               //打开定时器0中断
+ 130   1        
+ 131   1        GPRS_EN=1;             //GSM模块上电 
+ 132   1        Heartbeat=0;           //清除心跳帧计数器
+ 133   1        Heart_beat=0;
+ 134   1        Hui_Chuan = 0;         //清除回传时间
+ 135   1        HuiChuan  = 0;
+ 136   1        HuiChuanCnt = 0;
+ 137   1        LedFreq = 30;  //3s闪烁
+ 138   1        GSM_RST = 1;   
+ 139   1        delay_ms(300);
+ 140   1        GSM_RST = 0;
+ 141   1        delay_ms(2000); 
+ 142   1      }
+ 143          
+ 144          void Low_Pw_Rtc(void)               //睡眠函数                 
+ 145          {     
+ 146   1        PCON |= 0x02;                     //MCU进入掉电模式
+ 147   1        NOP65();  
+ 148   1        RUNING_LED = 0;  
+ 149   1        Get_RTC();
+ 150   1      }
+ 151          
+ 152          /*******************************************************************************
+ 153          * 函数名 : main 
+ 154          * 描述   : 主函数
+ 155          * 输入   : 
+ 156          * 输出   : 
+ 157          * 返回   : 
+ 158          * 注意   : 串口2负责与GPRS模块通信，串口1用于串口调试，可以避免在下载程序时数据
+ 159                     还发送到模块
+ 160          *******************************************************************************/
+ 161          
+ 162          void main(void)
+ 163          {
+ 164   1        delay_ms(1000);
+ 165   1        GPIO_config();           //IO口初始化
+ 166   1        Uart1Init();             //串口1初始化 115200 @11.0592MHz
+ 167   1        Uart2Init();             //串口2初始化 115200 @11.0592MHz
+ 168   1        Timer0Init();            //50毫秒中断 @11.0592MHz
+ 169   1        Timer3Init();            //1毫秒中断  @11.0592MHz  串口超时定时器
+ 170   1        Timer4Init();            //50毫秒中断 @11.0592MHz
+ 171   1        SW_Init();               //移动报警初始化
+ 172   1        Light_Init();            //防拆报警初始化
+ 173   1        X1=1;X2=1;X3=1;ADC=1;RXD_0=1;TXD_0=1;POWKEY=0;   //不使用的引脚输出高电平
+ 174   1        GSM_RST=0;                        
+ 175   1        GPRS_EN=0;                        //GSM模块掉电
+ 176   1        RUNING_LED=1;                     //关闭LED灯 
+C51 COMPILER V9.52.0.0   MAIN                                                              12/19/2017 08:58:30 PAGE 4   
+
+ 177   1        Fwt=(*(unsigned char  idata *)0xF8)*256 + *(unsigned char  idata *) 0xF9; //掉电唤醒频率 32.168K  34,88K
+ 178   1        WDT_CONTR = 0x27;                 //看门狗溢出时间 8秒
+ 179   1        
+ 180   1        IapReadBuf(EEPROM_Data ,UserADD ,50); //读取EEPROM内容
+ 181   1        
+ 182   1        LoadParam();                      //加载参数
+ 183   1        Module.Status = Flag_In_Uart;    
+ 184   1        EA=1;                             //开总中断
+ 185   1        LowPower();                       //掉电唤醒定时器
+ 186   1      
+ 187   1        while(1)
+ 188   1        {
+ 189   2          switch(Module.Status)
+ 190   2            {
+ 191   3            case Flag_In_Init:
+ 192   3                    Out_LOW_Pow();     //单片机硬件退出低功耗模式    //需要校准时间 并让模块模拟RTC时钟 
+ 193   3                    Second_AT_Command1("AT+AGPS=1","OK",0,1,5);      //打开GPS  打开定时器
+ 194   3                    Module.Status = Flag_In_Normal;                  //模块初始化完成后，进入休眠  
+ 195   3                    break;      
+ 196   3            
+ 197   3            case Flag_In_Normal:
+ 198   3                    Heartbeat=0;  //清除心跳帧计数器
+ 199   3                    Heart_beat=0;
+ 200   3                    HuiChuan=0;
+ 201   3                    delay_ms(1000);
+ 202   3                    if(Get_GPS() == 1)  //获取GPS
+ 203   3                    {
+ 204   4                      delay_ms(100);    //保存时间
+ 205   4                      Module.OpenTime = (EEPROM_Data[13]*256) + EEPROM_Data[14];
+ 206   4                      Module.Status = Flag_In_Off;          //解析完成关机                
+ 207   4                    }         
+ 208   3                    Heartbeat=0;  //清除心跳帧计数器
+ 209   3                    Heart_beat=0; 
+ 210   3                    HuiChuan=0;             
+ 211   3                    break;
+ 212   3            case Flag_In_Off:
+ 213   3                    Time_wake  = 0;    //关机
+ 214   3                 break;     
+ 215   3            case Flag_In_Uart:
+ 216   3                    Out_LOW_Pow();  //单片机硬件退出低功耗模式
+ 217   3                    delay_ms(2000);   
+ 218   3                    LedFreq = 30;  //3s闪烁
+ 219   3                    RemoveAlarm = 0;      
+ 220   3                    Second_AT_Command1("ATE0","OK",0,2,5);                 //取消回显
+ 221   3                    Second_AT_Command1("AT+AGPS=1","OK",0,2,5);            //打开GPS  打开定时器  
+ 222   3                    Get_IMEI();
+ 223   3                    Get_Voltage();      
+ 224   3                    Get_CCID();           //获取SIM卡号    
+ 225   3            
+ 226   3                    if(Module.NO_SIM == 1)//有SIM卡就连接服务器
+ 227   3                    {
+ 228   4                      if(Wait_CREG()==1)                 //等待模块注册成功
+ 229   4                      {       
+ 230   5                        LedFreq = 15;  //1.5s闪烁                 
+ 231   5                        Get_CSQ();                       //获取GSM信号
+ 232   5                        Connect_Server_Test();           //连接服务器
+ 233   5                      }
+ 234   4                      else  
+ 235   4                     { 
+ 236   5                      Module.OpenTime = 180;                      //3分钟找不到信号关机
+ 237   5                      Module.Status = Flag_In_Normal;
+ 238   5                     }                  
+C51 COMPILER V9.52.0.0   MAIN                                                              12/19/2017 08:58:30 PAGE 5   
+
+ 239   4                    }
+ 240   3                    else   //没有就打开GPS 校准时间 最多3分钟无信号休眠
+ 241   3                    {
+ 242   4                      Module.OpenTime = 180;                      //3分钟找不到信号关机
+ 243   4                      Module.Status = Flag_In_Normal;
+ 244   4                    }
+ 245   3                    break;
+ 246   3                    
+ 247   3            case Flag_In_Wait:  //与服务器通信状态
+ 248   3                    
+ 249   3                    Rec_Server_Data();
+ 250   3                    Save_EEPROM();
+ 251   3                    Send_Answer();
+ 252   3            
+ 253   3                    /*
+ 254   3                    if(Uart2_Temp_Flag == 1)  //表示数据已经处理完毕 可以转移数据过来
+ 255   3                    {
+ 256   3                      u8 i;
+ 257   3                      for(i=0;i<Buf2_Max;i++)
+ 258   3                      {
+ 259   3                        Uart2_Temp[i] = Uart2_Buf[i];
+ 260   3                      }
+ 261   3                      Uart2_Temp_Flag = 0;
+ 262   3                    }     
+ 263   3                    */      
+ 264   3                    break;
+ 265   3            default:
+ 266   3                    break;
+ 267   3            }
+ 268   2            
+ 269   2            if(Time_wake==0)                
+ 270   2            { 
+ 271   3              In_LOW_Pow();//单片机硬件接口进入低功耗
+ 272   3              Low_Pw_Rtc();//软件休眠  模拟RTC时钟
+ 273   3            }  
+ 274   2            WDT_CONTR |= 0x10;  //喂狗
+ 275   2        }
+ 276   1      }
+ 277          
+ 278          
+ 279          
+ 280          
+ 281          
+ 282          
+ 283          
+ 284          
+ 285          
+ 286          
+ 287          
+ 288          
+ 289          
+ 290          
+ 291          
+ 292          /*******************************************************************************
+ 293          * 函数名 : Timer0_ISR
+ 294          * 描述   : 定时器0中断服务入口函数,20ms中断一次
+ 295          * 输入   : 
+ 296          * 输出   : 
+ 297          * 返回   : 
+ 298          * 注意   : 
+ 299          *******************************************************************************/
+ 300          void Timer0_ISR() interrupt 1
+C51 COMPILER V9.52.0.0   MAIN                                                              12/19/2017 08:58:30 PAGE 6   
+
+ 301          { 
+ 302   1        TR0=0;//关定时器
+ 303   1        LedCnt++;
+ 304   1        if(LedCnt > 2*LedFreq)
+ 305   1        {
+ 306   2          RUNING_LED = ~ RUNING_LED;
+ 307   2          LedCnt = 0;
+ 308   2        }
+ 309   1        
+ 310   1        if(UART2_Start)
+ 311   1        {
+ 312   2          UART2_Start++;
+ 313   2          if(UART2_Start > 500) //10秒响应
+ 314   2          {
+ 315   3            XiangYingFlag = 1;
+ 316   3          }
+ 317   2        }
+ 318   1        
+ 319   1        if(GuZhang_Start)
+ 320   1        {
+ 321   2          GuZhang_Cnt++;
+ 322   2          GuZhang_Time = 0;
+ 323   2          if(GuZhang_Cnt > 150) //3秒响应
+ 324   2          {
+ 325   3            GuZhang_Time = 1;
+ 326   3            GuZhang_Start = 0;
+ 327   3            GuZhang_Cnt = 0;
+ 328   3          }
+ 329   2        }
+ 330   1        
+ 331   1        if(Timer0_start)
+ 332   1           Times++;
+ 333   1        if(Times > (50*shijian))
+ 334   1        {
+ 335   2          Timer0_start = 0;
+ 336   2          Times = 0;
+ 337   2        }
+ 338   1        TR0=1;//开定时器
+ 339   1      }
+ 340          
+ 341          /*******************************************************************************
+ 342          * 函数名 : Timer0Init
+ 343          * 描述   : 定时器0初始化函数
+ 344          * 输入   : 
+ 345          * 输出   : 
+ 346          * 返回   : 
+ 347          * 注意   : 
+ 348          *******************************************************************************/
+ 349          void Timer0Init(void)   //20毫秒@11.0592MHz
+ 350          {
+ 351   1        AUXR &= 0x7F; //12T模式
+ 352   1        TMOD &= 0xF0; //设置定时器模式 16位重载
+ 353   1        TL0 = 0x00;   //设定定时器初值
+ 354   1        TH0 = 0xB8;   //设定定时器初值
+ 355   1        TF0 = 0;      //清除TF0标志
+ 356   1        
+ 357   1        TR0 = 1;      //定时器0打开计时
+ 358   1        ET0 = 1;      //打开定时器0中断
+ 359   1      }
+ 360          
+ 361          
+ 362          void Get_RTC(void)  //模拟RTC时钟
+C51 COMPILER V9.52.0.0   MAIN                                                              12/19/2017 08:58:30 PAGE 7   
+
+ 363          {
+ 364   1        u16 k;
+ 365   1        u16 temp;
+ 366   1      
+ 367   1        if((InterruptFlag == 1)&&(Module.Status == Flag_In_Off))
+ 368   1        {
+ 369   2          InterruptFlag = 0;
+ 370   2        }
+ 371   1        else if((InterruptFlag == 0)&&(Module.Status == Flag_In_Off))
+ 372   1        {
+ 373   2          Time.sec += 10;
+ 374   2          if((Module.alarm[10] != 0)&&(Module.Status == Flag_In_Off))
+ 375   2          {
+ 376   3            BuBaoJing++;
+ 377   3            if(BuBaoJing > 60)  //10分钟
+ 378   3            {
+ 379   4              RemoveAlarm = 1;
+ 380   4              BuBaoJing = 0;
+ 381   4            }
+ 382   3          }
+ 383   2          if((Module.alarm[10] == 0)&&(Module.Status == Flag_In_Off))
+ 384   2          {
+ 385   3            RemoveAlarm = 1;
+ 386   3          }
+ 387   2        }
+ 388   1        
+ 389   1        while(Time.sec>59)  {Time.sec -= 60; Time.min += 1;}
+ 390   1        while(Time.min>59)  {Time.min -= 60; Time.hour+= 1;}
+ 391   1        while(Time.hour>23) {Time.hour -=24; Time.day += 1;}
+ 392   1        
+ 393   1        switch(Time.month) 
+ 394   1        { 
+ 395   2          case 1: 
+ 396   2          case 3: 
+ 397   2          case 5: 
+ 398   2          case 7: 
+ 399   2          case 8: 
+ 400   2          case 10: 
+ 401   2          case 12: if(Time.day >= 32) 
+ 402   2                    { 
+ 403   3                      Time.day = 1; 
+ 404   3                      Time.month++; 
+ 405   3                    } break; 
+ 406   2          case 4: 
+ 407   2          case 6: 
+ 408   2          case 9: 
+ 409   2          case 11: if(Time.day >= 31) 
+ 410   2                  { 
+ 411   3                    Time.day = 1; 
+ 412   3                    Time.month++; 
+ 413   3                  }break; 
+ 414   2          case 2: if((Time.year%4) == 0) 
+ 415   2                  { 
+ 416   3                    if(Time.day > 29) 
+ 417   3                    { 
+ 418   4                      Time.day = 1; 
+ 419   4                      Time.month++; 
+ 420   4                    } 
+ 421   3                  } 
+ 422   2                  else 
+ 423   2                 { 
+ 424   3                  if(Time.day > 28) 
+C51 COMPILER V9.52.0.0   MAIN                                                              12/19/2017 08:58:30 PAGE 8   
+
+ 425   3                  { 
+ 426   4                    Time.day = 1; 
+ 427   4                    Time.month++; 
+ 428   4                  } 
+ 429   3                 } break; 
+ 430   2          default: break; 
+ 431   2          } 
+ 432   1        
+ 433   1          if(Time.month > 12) 
+ 434   1          { 
+ 435   2            Time.month= 1; 
+ 436   2            Time.year++; 
+ 437   2          }
+ 438   1          
+ 439   1          if(Module.Status == Flag_In_Off) //模块每天上传次数   
+ 440   1          {       
+ 441   2             if(Time.hour > EEPROM_Data[21])
+ 442   2             {
+ 443   3                temp = ((u16)Time.hour-(u16)EEPROM_Data[21])*60 + (u16)Time.min - (u16)EEPROM_Data[22];
+ 444   3             }
+ 445   2             else if(Time.hour < EEPROM_Data[21])
+ 446   2             {
+ 447   3                temp = (u16)((Time.hour+24)-EEPROM_Data[21])*60 + (u16)Time.min - (u16)EEPROM_Data[22];
+ 448   3             }
+ 449   2             else
+ 450   2             {
+ 451   3                if(Time.min >= EEPROM_Data[22])
+ 452   3                {
+ 453   4                  temp = Time.min - EEPROM_Data[22];
+ 454   4                }
+ 455   3                else
+ 456   3                {
+ 457   4                  temp = EEPROM_Data[22] - Time.min;
+ 458   4                }
+ 459   3             }
+ 460   2             
+ 461   2             for(k=0;k<Module.ShangChuanCnt;k++) //循环遍历每个需要上传的时间点  
+ 462   2              {
+ 463   3                if(temp == (k * Module.ShangChuanDelay))
+ 464   3               {
+ 465   4                  Module.Status = Flag_In_Uart;
+ 466   4                  Time_wake = 1;
+ 467   4               }
+ 468   3             }
+ 469   2             if((Time.hour*100 + Time.min)== Module.GPSTime)  //GPS校时时间到了  每天提前2小时校时
+ 470   2             {
+ 471   3                Module.Status = Flag_In_Init;
+ 472   3                Time_wake = 1;
+ 473   3             }
+ 474   2          }
+ 475   1      }
+ 476          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1459    ----
+   CONSTANT SIZE    =     18    ----
+   XDATA SIZE       =     24       8
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+C51 COMPILER V9.52.0.0   MAIN                                                              12/19/2017 08:58:30 PAGE 9   
+
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

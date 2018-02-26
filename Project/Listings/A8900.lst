@@ -1,0 +1,1893 @@
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE A8900
+OBJECT MODULE PLACED IN .\Output\A8900.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Hardware\A8900\A8900.c LARGE OPTIMIZE(9,SIZE) BROWSE INCDIR(..\Hardwa
+                    -re\A8900;..\Hardware\Delay;..\Hardware\EEPROM;..\Hardware\GPIO;..\Hardware\GPS;..\Hardware\MoveData;..\Hardware\Timer;..
+                    -\Hardware\UART;..\User;..\Project) DEBUG OBJECTEXTEND PRINT(.\Listings\A8900.lst) TABS(2) OBJECT(.\Output\A8900.obj)
+
+line level    source
+
+   1          #include  "A8900.h"
+   2          #include  "user_define.h"
+   3          #include  "GPS.h"
+   4          #include  <stdio.h> 
+   5          #include  "eeprom.h"
+   6          /*************  ±¾µØ³£Á¿ÉùÃ÷  **************/
+   7          unsigned char FactData[50] =  //³ö³§ÉèÖÃ²ÎÊý   
+   8          {
+   9            112,4,70,238,
+  10            0x23,0x28,   //9000
+  11            0,0,         //UDP¶Ë¿ÚºÅ 0000
+  12            0,           //0.IP·½Ê½»¹ÊÇ1.ÓòÃû·½Ê½
+  13            0,0,         //ÖØÆô×´Ì¬ÐÅÏ¢
+  14            0,0xb4,      //ÐÄÌøÊ±¼ä¼ä¸ô180s
+  15            0,0xbe,      //Ä£¿é»½ÐÑÊ±¼ä190s
+  16            0,0x1e,      //»Ø´«Ê±¼ä30s
+  17            1,0x2c,      //»Ø´«´ÎÊý300     
+  18            0,0,         //×·×ÙÊ±¼ä0·ÖÖÓ    
+  19            9,0,         //ÉÏ´«µÄ¾ßÌåÊ±¼äµã 9µã  
+  20            4,0,         //ÖØÆôÐÅÏ¢ 0 0
+  21            0,1,          // Ò»ÌìÉÏ´«1´Î            
+  22            0,0,         //ÖÕ¶Ë¿ØÖÆÀà±êÖ¾Î»  ¹âÃô  ÒÆ¶¯               
+  23            3,           //BIT0=1 ´ò¿ª¹âÃô BIT1=1 ´ò¿ªÕð¶¯  BIT2 Èí¼þÖØÆô±êÖ¾  
+  24            0,0,         //ÉÏÒ»´ÎÉÏ±¨µÄÊ±¼ä
+  25            2,0,         //·þÎñÆ÷Á¬½ÓÊ§°Ü´ÎÊý200´Î
+  26            0,0,0,0,     //ipµØÖ·±£´æ
+  27            0,0          //tcp¶Ë¿ÚºÅ±£´æ
+  28          };
+  29          
+  30          /*************  ±¾µØ±äÁ¿ÉùÃ÷  **************/
+  31          u8   Times=0,shijian=0,S_Point; // S_Point FindStr ·µ»ØµÄÖ¸ÕëÎ»ÖÃ
+  32          bdata u8 Flag;//¶¨Ê±Æ÷±êÖ¾Î»
+  33          u32 Heartbeat=0;
+  34          u8 Heart_beat =0;
+  35          sbit Timer0_start =Flag^0;  //¶¨Ê±Æ÷0ÑÓÊ±Æô¶¯¼ÆÊýÆ÷
+  36          u32 HuiChuanCnt=0;
+  37          u32 Time_wake;              //ÉÏÏßÊ±¼ä 
+  38          u8  Buffer[130]=0;           //»º´æ  ÉÏ´«µ½·þÎñÆ÷µÄÊý¾Ý
+  39          u8  EEPROM_Data[50];
+  40          u8  PramFlag=0;              //²ÎÊý±êÖ¾Î»
+  41          u8  RemoveAlarm = 1;           //ÉÏµçÄ¬ÈÏ´ò¿ª±¨¾¯±êÖ¾Î»
+  42          u16 QieHuanSer = 0;             //ÇÐ»»·þÎñÆ÷±êÖ¾
+  43          
+  44          struct 
+  45          {
+  46              u8  alarm[15];          //Ä£¿é±¨¾¯×´Ì¬   ±¨¾¯ Õý³£ Ç·Ñ¹µÈ 
+  47              u8  DianLiang[3];       //Ä£¿éµçÁ¿ 99.9%
+  48              u8  IMEI[15];           //Ä£¿éIMEIºÅÂë
+  49              u8  CSQ[2];             //Ä£¿éÐÅºÅ
+  50              u8  Status;             //Ä£¿é¹¤×÷×´Ì¬   ÐÝÃß ÔËÐÐ µÈ´ý
+  51              u16 serNum;             //±¨ÎÄÐòÁÐºÅ
+  52              u8  StationAdd[32];     //»ùÕ¾Î»ÖÃÊý¾Ý
+  53              u8  ServerIP[4];        //IP µØÖ·
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 2   
+
+  54              u32 TCPPort;            //TCP¶Ë¿ÚºÅ
+  55              u32 UDPPort;            //UDP¶Ë¿ÚºÅ
+  56              u8  YuMing[25];         //ÓòÃû
+  57              u8  YuORIP;             //±íÊ¾IPµØÖ· »¹ÊÇÓòÃû·½Ê½
+  58              u8  cq_ethernet_err;    //ATÖ¸ÁîÖØ·¢´ÎÊý
+  59              u32 HeartTime;          //ÉèÖÃÐÄÌøÊ±¼ä¼ä¸ô
+  60              u32 OpenTime;           //Ä£¿é»½ÐÑÊ±¼ä
+  61              u32 HuiChuanTime;       //ÉèÖÃ»Ø´«Ê±¼ä
+  62              u32 HuiChuanCnt;        //ÉèÖÃ»Ø´«´ÎÊý
+  63              u32 ZhuiZongTime;       //ÉèÖÃ×·×ÙÊ±¼ä
+  64              u32 BaoJingTime;        //ÉèÖÃ±¨¾¯¼ä¸ôÊ±¼ä  
+  65              u8  CCID[20];           //¶ÁÈ¡SIM¿¨Î¨Ò»±êÊ¶ºÅ
+  66              u8  NO_SIM;             //ÅÐ¶ÏÄ£¿éÊÇ·ñÓÐSIM¿¨
+  67              u16 ShangChuanTime;     //ÉÏ´«µÄ¾ßÌåÊ±¼äµã
+  68              u8  ChongQiMess[2];     //Ä£¿éÖØÆôÐÅÏ¢
+  69              u16 ShangChuanCnt;      //Ä£¿éÃ¿ÌìÉÏ´«´ÎÊý
+  70              u16 ShangChuanDelay;    //Ä£¿éÃ¿ÌìÉÏ´«¼ä¸ôÊ±¼ä Ò»Ìì3´Î¼´ 8Ð¡Ê±¼ä¸ô  
+  71              u16 QieHuanCnt;         //Ä£¿éÊ§°Ü´ÎÊý´ïµ½¶àÉÙÇÐ»»·þÎñÆ÷
+  72              u16 GPSTime;            //Ã¿ÌìÉÏ±¨Ç°30·ÖÖÓÐ£Ê±Ò»´Î
+  73          } Module; 
+  74          
+  75          nmea_msg gpsx;     //GPSÐÅÏ¢
+  76          /*************  Íâ²¿º¯ÊýºÍ±äÁ¿ÉùÃ÷*****************/
+  77          ///extern xdata u8 Uart1_Buf[Buf1_Max];
+  78          extern u8 Uart2_Buf[Buf2_Max];
+  79          extern void Get_RTC(void);
+  80          extern u8 GUZHANG;
+  81          extern u8 Guzhang_Flag;                              //ÉÏ±¨¹ÊÕÏºó£¬±êÖ¾Î»Çå0
+  82          extern void CLR_Buf2(void);
+  83          extern u16  First_Int;
+  84          extern u8 Hui_Chuan;
+  85          extern u8 XiangYingFlag;
+  86          extern u16 UART2_Start;
+  87          extern u32 HuiChuan;
+  88          extern u8 CloseFlag;
+  89          extern u8  LedFreq ;        //Ä¬ÈÏÉÏµç2sÉÁË¸  1±íÊ¾ 100msÉÁË¸ 10±íÊ¾1sÉÁË¸
+  90          extern u8  GuZhang_Cnt,GuZhang_Time,GuZhang_Start;
+  91          void LoadParam(void)
+  92          {
+  93   1        //²ÎÊý¸ù¾ÝÓÃ»§ÇøEEPROMÀ´¸³Öµ
+  94   1        Module.ServerIP[0] = EEPROM_Data[0];
+  95   1        Module.ServerIP[1] = EEPROM_Data[1];
+  96   1        Module.ServerIP[2] = EEPROM_Data[2];
+  97   1        Module.ServerIP[3] = EEPROM_Data[3];
+  98   1        Module.TCPPort = EEPROM_Data[4]*256+EEPROM_Data[5];
+  99   1        Module.UDPPort = EEPROM_Data[6]*256+EEPROM_Data[7];
+ 100   1        Module.YuORIP  = EEPROM_Data[8];   //0 ±íÊ¾ÎªIPµØÖ·  1 ±íÊ¾ÎªÓòÃû
+ 101   1        Module.serNum  = 1;  
+ 102   1        Module.HeartTime= EEPROM_Data[11]*256+EEPROM_Data[12];
+ 103   1        Module.ZhuiZongTime= (EEPROM_Data[19]*100+EEPROM_Data[20])*60; //ÉèÖÃ×·×ÙÊ±¼ä Ãë
+ 104   1        if(Module.ZhuiZongTime == 0)
+ 105   1        {
+ 106   2          Module.OpenTime = EEPROM_Data[13]*256+EEPROM_Data[14];
+ 107   2        }
+ 108   1        else
+ 109   1        {
+ 110   2          Module.OpenTime = Module.ZhuiZongTime;
+ 111   2        }
+ 112   1        
+ 113   1        Module.HuiChuanTime= EEPROM_Data[15]*256+EEPROM_Data[16];      //ÉèÖÃ»Ø´«Ê±¼ä
+ 114   1        Module.HuiChuanCnt = EEPROM_Data[17]*256+EEPROM_Data[18];      //ÉèÖÃ»Ø´«´ÎÊý
+ 115   1        
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 3   
+
+ 116   1        Module.ShangChuanTime = EEPROM_Data[21]*100+EEPROM_Data[22]; 
+ 117   1        if(EEPROM_Data[21] > 1)   //Ã¿ÌìÉÏ±¨ Ç°2Ð¡Ê± Ð£Ê±Ò»´Î
+ 118   1        {
+ 119   2          Module.GPSTime = Module.ShangChuanTime - 200 ;
+ 120   2        }
+ 121   1        else
+ 122   1        {
+ 123   2          Module.GPSTime = Module.ShangChuanTime + 2200 ;  
+ 124   2        }           
+ 125   1      
+ 126   1        Module.ChongQiMess[0] = EEPROM_Data[23] ;
+ 127   1        Module.ChongQiMess[1] = EEPROM_Data[24] ;//ÖØÆôÐÅÏ¢
+ 128   1      
+ 129   1        Module.ShangChuanCnt  = EEPROM_Data[25]*100 + EEPROM_Data[26];
+ 130   1        Module.alarm[10]= 0 ;  //³ö³§Çå³ý±¨¾¯±êÖ¾Î»          
+ 131   1        Module.alarm[11]= 0 ;
+ 132   1      
+ 133   1        if((EEPROM_Data[29]&0x01) == 1)    //´ò¿ª¹âÃô±¨¾¯
+ 134   1        {
+ 135   2          EX1 = 1;
+ 136   2          IT1 = 1;
+ 137   2        }
+ 138   1        else
+ 139   1        {
+ 140   2          EX1 = 0;
+ 141   2          IT1 = 0;
+ 142   2        }
+ 143   1        if((EEPROM_Data[29]&0x02) == 2)  //´ò¿ªÕð¶¯±¨¾¯
+ 144   1        {
+ 145   2          EX0 = 1;
+ 146   2        }
+ 147   1        else
+ 148   1        {
+ 149   2          EX0 = 0;
+ 150   2        }
+ 151   1        
+ 152   1        Module.ShangChuanDelay = 1440/Module.ShangChuanCnt;       //Ä£¿éÃ¿ÌìÉÏ´«¼ä¸ôÊ±¼ä µ¥Î» £¨·ÖÖÓ£© ÉÏ´«10´Î ¼
+             -ä¸ô144·ÖÖÓ´«Ò»´Î
+ 153   1      
+ 154   1        Module.Status = Flag_In_Uart;    
+ 155   1      
+ 156   1        EEPROM_Data[29] &=~0x04;
+ 157   1        Time.sec = 2;
+ 158   1        Time.min = 1; 
+ 159   1        Time.hour = 1;
+ 160   1        Time.day  = 1;
+ 161   1        Time.month = 1;
+ 162   1        Time.year  = 2018;
+ 163   1        Time_wake=0;
+ 164   1        EEPROM_Data[30] = 0;
+ 165   1        EEPROM_Data[31] = 0; //30/31Î´Ê¹ÓÃ
+ 166   1        Module.QieHuanCnt= (EEPROM_Data[32]*100) + EEPROM_Data[33];     //ÇÐ»»·þÎñÆ÷Ö¸Áî
+ 167   1      }
+ 168          
+ 169          
+ 170          /*******************************************************************************
+ 171          * º¯ÊýÃû :  GET_Voltage
+ 172          * ÃèÊö   :  ²éÑ¯µç³ØµçÁ¿
+ 173          * ÊäÈë   : 
+ 174          * Êä³ö   : 
+ 175          * ·µ»Ø   : 
+ 176          * ×¢Òâ   : 
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 4   
+
+ 177          *******************************************************************************/
+ 178          void Get_Voltage(void)
+ 179          {
+ 180   1        if(strstr(Uart2_Buf,"MIPDATA")==NULL)  //Ñ¡ÔñÊÇ·ñÇå³ý»º´æ
+ 181   1          CLR_Buf2();     
+ 182   1        UART2_RXD_FLAG = 0; 
+ 183   1        UART2_SendString("AT+CBC");
+ 184   1        UART2_SendLR();
+ 185   1        
+ 186   1        Uart2_RXD_Chaoshi = 100;
+ 187   1        while(!UART2_RXD_FLAG);
+ 188   1        
+ 189   1        if(Find_String("CBC: 0,",6,Uart2_Temp))   //3.7VÒÔÉÏÂúµç  3.3VÎÞµç  °´ÕÕÏßÐÔ¼ÆËã
+ 190   1            {
+ 191   2              int i,j;    
+ 192   2              i = (Uart2_Temp[S_Point+7]-'0')*1000 + (Uart2_Temp[S_Point+8]-'0')*100 + (Uart2_Temp[S_Point+9]-'0')*1
+             -0 + Uart2_Temp[S_Point+10]-'0';   //µçÑ¹ 3800mv
+ 193   2              j = ((i - 3300)*5)/2;
+ 194   2              if(j>999)
+ 195   2              {
+ 196   3                Module.DianLiang[0] = '9';
+ 197   3                Module.DianLiang[1] = '9';
+ 198   3                Module.DianLiang[2] = '9';
+ 199   3              }
+ 200   2              else if(j<0)
+ 201   2              {
+ 202   3                Module.DianLiang[0] = '0';
+ 203   3                Module.DianLiang[1] = '0';
+ 204   3                Module.DianLiang[2] = '0';          
+ 205   3              }
+ 206   2              else
+ 207   2              {
+ 208   3                Module.DianLiang[0] = j/100 + '0';
+ 209   3                Module.DianLiang[1] = (j/10)%10 + '0';
+ 210   3                Module.DianLiang[2] = j%10 + '0';
+ 211   3              }
+ 212   2              Module.alarm[11] &= ~0x08 ;
+ 213   2              if(j < 200)
+ 214   2              {
+ 215   3                Module.alarm[11] |= 0x08 ; //µÍµçÑ¹±¨¾¯
+ 216   3              }
+ 217   2            } 
+ 218   1      }
+ 219          
+ 220          /*******************************************************************************
+ 221          * º¯ÊýÃû :  GET_CSQ
+ 222          * ÃèÊö   :  ²éÑ¯GSMÄ£¿éÐÅºÅ
+ 223          * ÊäÈë   : 
+ 224          * Êä³ö   : 
+ 225          * ·µ»Ø   : 
+ 226          * ×¢Òâ   : 
+ 227          *******************************************************************************/
+ 228          u8 Get_CSQ(void)
+ 229          {
+ 230   1          u8 res=1;               
+ 231   1          if(strstr(Uart2_Buf,"MIPDATA")==NULL)  //Ñ¡ÔñÊÇ·ñÇå³ý»º´æ
+ 232   1            CLR_Buf2(); 
+ 233   1          UART2_RXD_FLAG=0;
+ 234   1          UART2_SendString("AT+CSQ");
+ 235   1          UART2_SendLR();
+ 236   1        Uart2_RXD_Chaoshi = 100;
+ 237   1          
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 5   
+
+ 238   1          while(!UART2_RXD_FLAG);
+ 239   1          
+ 240   1          if(Find_String("CSQ:",4,Uart2_Temp))
+ 241   1          {
+ 242   2               if(Uart2_Temp[S_Point+6]==',')
+ 243   2               {
+ 244   3                 Module.CSQ[0] = '0';
+ 245   3                 Module.CSQ[1] =  Uart2_Temp[S_Point+5];
+ 246   3               }
+ 247   2               if(Uart2_Temp[S_Point+7]==',')
+ 248   2               {
+ 249   3                 Module.CSQ[0] =  Uart2_Temp[S_Point+5];
+ 250   3                 Module.CSQ[1] =  Uart2_Temp[S_Point+6];
+ 251   3               }
+ 252   2          }
+ 253   1          return res;
+ 254   1      }
+ 255          
+ 256          /*******************************************************************************
+ 257          * º¯ÊýÃû :  GET_CCID
+ 258          * ÃèÊö   :  »ñÈ¡CCID
+ 259          * ÊäÈë   : 
+ 260          * Êä³ö   : 
+ 261          * ·µ»Ø   :  0  »ñÈ¡³É¹¦  1 »ñÈ¡Ê§°Ü
+ 262          * ×¢Òâ   : 
+ 263          *******************************************************************************/
+ 264          u8 Get_CCID(void)
+ 265          {
+ 266   1          u8 res=1;
+ 267   1          u8 k;
+ 268   1          Module.cq_ethernet_err = 0;
+ 269   1          while(Module.cq_ethernet_err < 20)
+ 270   1          {
+ 271   2            CLR_Buf2();     
+ 272   2            UART2_SendString("AT+CCID?");
+ 273   2            UART2_SendLR(); 
+ 274   2            Uart2_RXD_Chaoshi = 200;
+ 275   2      
+ 276   2            while(!UART2_RXD_FLAG);
+ 277   2            if(Find_String("CCID: ",6,Uart2_Temp))
+ 278   2            {
+ 279   3                     if(Uart2_Temp[S_Point+27]=='"')
+ 280   3                     {
+ 281   4                        for(k=0;k<20;k++)
+ 282   4                          {
+ 283   5                            Module.CCID[k] = Uart2_Temp[S_Point+7+k];  
+ 284   5                          }
+ 285   4                        res=0;
+ 286   4                        Module.NO_SIM = 1;   //ÓÐSIM¿¨
+ 287   4                        Module.cq_ethernet_err = 20;
+ 288   4                     }
+ 289   3            }
+ 290   2            else
+ 291   2            {
+ 292   3                Module.cq_ethernet_err++;
+ 293   3            }
+ 294   2            delay_ms(1300);
+ 295   2            WDT_CONTR |= 0x10;
+ 296   2          }   
+ 297   1          CLR_Buf2();
+ 298   1          Module.cq_ethernet_err = 0;
+ 299   1          return res;
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 6   
+
+ 300   1      }
+ 301          
+ 302          /*******************************************************************************
+ 303          * º¯ÊýÃû : Wait_CREG
+ 304          * ÃèÊö   : µÈ´ýÄ£¿é×¢²á³É¹¦
+ 305          * ÊäÈë   : 
+ 306          * Êä³ö   : 
+ 307          * ·µ»Ø   : 
+ 308          * ×¢Òâ   : ÍøÂç×¢²áÐÅÏ¢
+ 309          *******************************************************************************/
+ 310          u8 Wait_CREG(void)  //
+ 311          {
+ 312   1        u8 i;
+ 313   1        u16 k;
+ 314   1        i = 0;
+ 315   1        Module.cq_ethernet_err = 0;
+ 316   1        while(Module.cq_ethernet_err < 50)              
+ 317   1        {
+ 318   2          CLR_Buf2();   
+ 319   2          UART2_SendString("AT+CREG?");
+ 320   2          UART2_SendLR();
+ 321   2          delay_ms(1200);                         
+ 322   2          for(k=0;k<Buf2_Max;k++)           
+ 323   2          {
+ 324   3            if(Uart2_Temp[k] == ':')
+ 325   3            {
+ 326   4              if((Uart2_Temp[k+4] == '1')||(Uart2_Temp[k+4] == '5')) //1£ºÒÑ¾­×¢²á 5:×¢²áÂþÓÎÍøÂç
+ 327   4              {
+ 328   5                i = 1;
+ 329   5                Module.cq_ethernet_err = 50;
+ 330   5                break;
+ 331   5              }
+ 332   4            }
+ 333   3          }
+ 334   2          WDT_CONTR |= 0x10;  //Î¹¹·
+ 335   2          Module.cq_ethernet_err++;
+ 336   2        }
+ 337   1        CLR_Buf2();
+ 338   1        return i;
+ 339   1      }
+ 340          
+ 341          /*******************************************************************************
+ 342          * º¯ÊýÃû :  Get_GPS
+ 343          * ÃèÊö   :  »ñÈ¡GPSÐÅÏ¢
+ 344          * ÊäÈë   : 
+ 345          * Êä³ö   : 
+ 346          * ·µ»Ø   : ÕÒµ½ÐÅºÅ ·µ»Ø1
+ 347          * ×¢Òâ   : 
+ 348          *******************************************************************************/
+ 349          u8 Get_GPS(void)
+ 350          {
+ 351   1        u8 i; 
+ 352   1        UART2_RXD_FLAG = 0;
+ 353   1        UART2_SendString("AT+GPSINFO?");
+ 354   1        UART2_SendLR(); 
+ 355   1        
+ 356   1        Uart2_RXD_Chaoshi = 150;
+ 357   1      
+ 358   1        while(!UART2_RXD_FLAG);
+ 359   1        if(Find_String("GPS NO",6,Uart2_Temp)==1)  //Èç¹ûÕÒbuµ½ÐÅºÅ
+ 360   1        {
+ 361   2          i = 0;
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 7   
+
+ 362   2          LedFreq = 7; //0.7ÃëÉÁË¸
+ 363   2        }
+ 364   1        else
+ 365   1        {
+ 366   2          i = 1;
+ 367   2          if(strstr(Uart2_Temp,"MIPDATA")==NULL)  //Ñ¡ÔñÊÇ·ñÇå³ý»º´æ
+ 368   2             CLR_Buf2();
+ 369   2          UART2_RXD_FLAG = 0;
+ 370   2          UART2_SendString("AT+GPSNMEA");
+ 371   2          UART2_SendLR();
+ 372   2          Uart2_RXD_Chaoshi = 100;
+ 373   2          
+ 374   2          while(!UART2_RXD_FLAG);
+ 375   2          GPS_Analysis(&gpsx,(u8*)Uart2_Temp);
+ 376   2          LedFreq = 1; //0.1ÃëÉÁË¸
+ 377   2        }
+ 378   1         if(strstr(Uart2_Buf,"MIPDATA")==NULL)  //Ñ¡ÔñÊÇ·ñÇå³ý»º´æ
+ 379   1           CLR_Buf2();
+ 380   1        return i;
+ 381   1      }
+ 382          
+ 383          /*******************************************************************************
+ 384          * º¯ÊýÃû :  Get_IMEI
+ 385          * ÃèÊö   :  »ñÈ¡IMEIÐÅÏ¢
+ 386          * ÊäÈë   : 
+ 387          * Êä³ö   : 
+ 388          * ·µ»Ø   : »ñÈ¡µ½Êý¾Ý·µ»Ø1 
+ 389          * ×¢Òâ   : 
+ 390          *******************************************************************************/
+ 391          
+ 392          u8 Get_IMEI(void)
+ 393          {
+ 394   1          u8 i,res=1;
+ 395   1          u16 k;              
+ 396   1          CLR_Buf2(); 
+ 397   1          UART2_SendString("AT+CGSN");
+ 398   1          UART2_SendLR(); 
+ 399   1          delay_ms(1000);
+ 400   1            for(k=0;k<(Buf2_Max-20);k++)            
+ 401   1            {
+ 402   2              if((Uart2_Temp[k+19] == 0x4f)&&(Uart2_Temp[k+20] == 0x4b))   //BUFÊý¾ÝÐ£Ñé
+ 403   2              {
+ 404   3                  for(i=0;i<15;i++)
+ 405   3                       {
+ 406   4                          Module.IMEI[i] =  Uart2_Temp[k+i] ;   
+ 407   4                          res = 0;           
+ 408   4                       }
+ 409   3              }
+ 410   2              
+ 411   2            }                             
+ 412   1          CLR_Buf2(); 
+ 413   1          return res;
+ 414   1      }
+ 415          
+ 416          /*
+ 417          u8 Get_IMEI(void) //868500027572627   868500027572692 
+ 418          {
+ 419            u8 res=0;
+ 420            Module.IMEI[0] =  '8' ;
+ 421            Module.IMEI[1] =  '6' ;
+ 422            Module.IMEI[2] =  '8' ;
+ 423            Module.IMEI[3] =  '5' ;
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 8   
+
+ 424            Module.IMEI[4] =  '0' ;
+ 425            Module.IMEI[5] =  '0' ;
+ 426            Module.IMEI[6] =  '0' ;
+ 427            Module.IMEI[7] =  '2' ;
+ 428            Module.IMEI[8] =  '7' ;
+ 429            Module.IMEI[9] =  '5' ;
+ 430            Module.IMEI[10] = '7' ;
+ 431            Module.IMEI[11] = '2' ;
+ 432            Module.IMEI[12] = '6' ;
+ 433            Module.IMEI[13] = '2' ;
+ 434            Module.IMEI[14] = '7' ;
+ 435            return res;
+ 436          }
+ 437          */
+ 438          
+ 439          /*******************************************************************************
+ 440          * º¯ÊýÃû : Send_OK
+ 441          * ÃèÊö   : ·¢ËÍÊý¾ÝÓ¦´ð·þÎñÆ÷µÄÖ¸Áî£¬¸Ãº¯ÊýÔÚÓÐÁ½¹¦ÄÜ
+ 442                    1£º½ÓÊÕµ½·þÎñÆ÷µÄÊý¾Ýºó£¬Ó¦´ð·þÎñÆ÷
+ 443                    2£º·þÎñÆ÷ÎÞÏÂ·¢Êý¾ÝÊ±£¬Ã¿¸ô Module.HeartTime Ãë·¢ËÍÒ»Ö¡ÐÄÌø£¬±£³ÖÓë·þÎñÆ÷Á¬½Ó
+ 444          * ÊäÈë   : 
+ 445          * Êä³ö   : 
+ 446          * ·µ»Ø   : 
+ 447          * ×¢Òâ   : 
+ 448          *******************************************************************************/
+ 449          void Send_Heart(void)
+ 450          {
+ 451   1        u8 i;
+ 452   1        Get_Voltage();
+ 453   1        Get_CSQ();
+ 454   1        *Buffer     = '*';
+ 455   1        *(Buffer+1) = 'M';
+ 456   1        *(Buffer+2) = 'G';
+ 457   1        *(Buffer+3) = '2';
+ 458   1        *(Buffer+4) = '0';
+ 459   1        *(Buffer+5) = '1';
+ 460   1          for(i=0;i<15;i++)     
+ 461   1        { 
+ 462   2          *(Buffer+6+i) = Module.IMEI[i];  //6-15 IMEIºÅÂë
+ 463   2        }
+ 464   1        
+ 465   1        *(Buffer+21)   =   ',';
+ 466   1        *(Buffer+22)   =   'A';           //¶¨Ê±»Ø´«µÄ¶¨Î»ÐÅÏ¢
+ 467   1        
+ 468   1        *(Buffer+23)   =   'H';           //¶¨Î»Êý¾Ý
+ 469   1        
+ 470   1        *(Buffer+24)   =   '&';
+ 471   1        *(Buffer+25)   =   'B';
+ 472   1        *(Buffer+26)   =   '0';
+ 473   1        *(Buffer+27)   =   '0';
+ 474   1        *(Buffer+28)   =   '0';
+ 475   1        *(Buffer+29)   =   '0';
+ 476   1        *(Buffer+30)   =   '0';
+ 477   1        *(Buffer+31)   =   '0';
+ 478   1        *(Buffer+32)   =   '0';
+ 479   1        *(Buffer+33)   =   '0';
+ 480   1        *(Buffer+34)   =   '0';
+ 481   1        *(Buffer+35)   =   '0';
+ 482   1        
+ 483   1        *(Buffer+36)   =   '&';
+ 484   1        *(Buffer+37)   =   'W';
+ 485   1        *(Buffer+38)   =   Module.alarm[10] + '0';
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 9   
+
+ 486   1        *(Buffer+39)   =   Module.alarm[11] + '0';
+ 487   1        
+ 488   1        *(Buffer+40)   =   '&';
+ 489   1        *(Buffer+41)   =   'M';
+ 490   1        *(Buffer+42)   =   Module.DianLiang[0];
+ 491   1        *(Buffer+43)   =   Module.DianLiang[1];
+ 492   1        *(Buffer+44)   =   Module.DianLiang[2];
+ 493   1        
+ 494   1        *(Buffer+45)   =   '&';
+ 495   1        *(Buffer+46)   =   'N';
+ 496   1        *(Buffer+47)   =   Module.CSQ[0];
+ 497   1        *(Buffer+48)   =   Module.CSQ[1];
+ 498   1        
+ 499   1        *(Buffer+49)   =   '&';
+ 500   1        *(Buffer+50)   =   'Z';
+ 501   1        *(Buffer+51)   =   Module.ChongQiMess[0] + '0';
+ 502   1        *(Buffer+52)   =   Module.ChongQiMess[0] + '0';
+ 503   1        
+ 504   1        *(Buffer+53)   =   '&';
+ 505   1        *(Buffer+54)   =   'T';
+ 506   1        
+ 507   1        *(Buffer+55) =  (Module.serNum/1000) + '0';
+ 508   1        *(Buffer+56) =  (Module.serNum/100)%10 + '0';
+ 509   1        *(Buffer+57) =  (Module.serNum/10)%10 + '0';
+ 510   1        *(Buffer+58) =  (Module.serNum)%10 + '0';
+ 511   1        *(Buffer+59) =   '#';
+ 512   1        
+ 513   1        Second_AT_Command1("AT+MIPSEND=1,60",">",0,2,2);
+ 514   1        UART2_Send_Len(Buffer,60);                   
+ 515   1        UART2_SendData(0X1A);      //Æô¶¯·¢ËÍÊý¾Ý
+ 516   1        //delay_ms(1200);
+ 517   1        Module.serNum ++;          //·¢ËÍÍêÒ»Ö¡ ÐòÁÐºÅ¼Ó1
+ 518   1        //CLR_Buf2();
+ 519   1      }
+ 520          
+ 521          /*******************************************************************************
+ 522          * º¯ÊýÃû : Second_AT_Command1
+ 523          * ÃèÊö   : ·¢ËÍATÖ¸Áîº¯Êý
+ 524          * ÊäÈë   : ·¢ËÍÊý¾ÝµÄÖ¸Õë    d£º0Çå»º´æ 1²»Çå»º´æ        wait_time·¢ËÍµÈ´ýÊ±¼ä(µ¥Î»£ºS)
+ 525          * Êä³ö   : 
+ 526          * ·µ»Ø   : 0£ºÕý³£  1£ºÊ§°Ü
+ 527          * ×¢Òâ   : 
+ 528          *******************************************************************************/
+ 529          u8 Second_AT_Command1(u8 *cmd,u8 *ack,u8 d,u8 wait_time,u8 err)        
+ 530          {
+ 531   1        u8 res=1;
+ 532   1        u8 *c;
+ 533   1        c = cmd;                    //±£´æ×Ö·û´®µØÖ·µ½c
+ 534   1        WDT_CONTR |= 0x10;   //Î¹¹·
+ 535   1        Module.cq_ethernet_err = 0;
+ 536   1        while((Module.cq_ethernet_err < err)&&(res==1))
+ 537   1        {
+ 538   2          WDT_CONTR |= 0x10;   //Î¹¹·
+ 539   2          UART2_SendString(cmd);
+ 540   2          UART2_SendLR(); 
+ 541   2          Times = 0;
+ 542   2          shijian = wait_time;
+ 543   2          Timer0_start = 1;
+ 544   2          UART2_RXD_FLAG = 0;
+ 545   2          //Uart2_RXD_Chaoshi = (wait_time*1000 -300);
+ 546   2          while(Timer0_start&res)
+ 547   2          //while(!UART2_RXD_FLAG);
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 10  
+
+ 548   2          {
+ 549   3            if(strstr(Uart2_Temp,ack)==NULL)
+ 550   3            {
+ 551   4              res = 1;
+ 552   4            }
+ 553   3            else
+ 554   3            {
+ 555   4              res = 0;
+ 556   4            } 
+ 557   3          }
+ 558   2          Module.cq_ethernet_err++; 
+ 559   2        }
+ 560   1        if((strstr(Uart2_Buf,"MIPDATA")==NULL)&&(d!=1))  //Ñ¡ÔñÊÇ·ñÇå³ý»º´æ
+ 561   1          CLR_Buf2(); 
+ 562   1        return res;
+ 563   1      }
+ 564          
+ 565          /*******************************************************************************
+ 566          * º¯ÊýÃû : Second_AT_Command
+ 567          * ÃèÊö   : ·¢ËÍATÖ¸Áîº¯Êý
+ 568          * ÊäÈë   : ·¢ËÍÊý¾ÝµÄÖ¸Õë¡¢·¢ËÍµÈ´ýÊ±¼ä(µ¥Î»£ºS)
+ 569          * Êä³ö   : 
+ 570          * ·µ»Ø   : 0:Õý³£  1:´íÎó
+ 571          * ×¢Òâ   : 
+ 572          *******************************************************************************/
+ 573          /*
+ 574          u8 Second_AT_Command(u8 *cmd,u8 *ack,u8 wait_time)         
+ 575          {
+ 576            u8 res=1;
+ 577            u8 *c;
+ 578            c = cmd;                    //±£´æ×Ö·û´®µØÖ·µ½c
+ 579            CLR_Buf2(); 
+ 580          
+ 581            for (cmd; *cmd!='\0';cmd++)
+ 582            {
+ 583              UART2_SendData(*cmd);
+ 584            }
+ 585            UART2_SendLR(); 
+ 586            Times = 0;
+ 587            shijian = wait_time;
+ 588            Timer0_start = 1;
+ 589            while(Timer0_start&res)                    
+ 590            {
+ 591              if(strstr(Uart2_Buf,ack)==NULL)
+ 592              {
+ 593                 res=1;
+ 594              }
+ 595              else
+ 596              {
+ 597                 res=0;
+ 598              }
+ 599          
+ 600            }
+ 601            CLR_Buf2(); 
+ 602            WDT_CONTR |= 0x10;   //Î¹¹·
+ 603            return res;
+ 604            
+ 605          }
+ 606          */
+ 607          
+ 608          /*******************************************************************************
+ 609          * º¯ÊýÃû : Connect_Server_Test
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 11  
+
+ 610          * ÃèÊö   : 
+ 611          * ÊäÈë   : 
+ 612          * Êä³ö   : 
+ 613          * ·µ»Ø   : 
+ 614          * ×¢Òâ   : 
+ 615          *******************************************************************************/
+ 616          void Connect_Server_Test()
+ 617          {  
+ 618   1        u8 buf[50]; 
+ 619   1        //if(Module.YuORIP == 0)  //Ê¹ÓÃIPµØÖ·
+ 620   1        {
+ 621   2          UART2_SendString("AT+MIPCLOSE=1");   //¹Ø±ÕÁ¬½Ó
+ 622   2          UART2_SendLR(); 
+ 623   2          delay_ms(1500);
+ 624   2          WDT_CONTR |= 0x10;  //Î¹¹·
+ 625   2          sprintf(buf,"AT+MIPOPEN=1,\"TCP\",\"%d.%d.%d.%d\",%ld,5000",(int)Module.ServerIP[0],(int)Module.ServerIP
+             -[1],(int)Module.ServerIP[2],(int)Module.ServerIP[3],Module.TCPPort); 
+ 626   2          if(Second_AT_Command1("AT+MIPCALL=1,\"CMNET\"","+MIPCALL: 1",0,3,20) == 0)   //´ò¿ªGPRS
+ 627   2          {
+ 628   3              if(Second_AT_Command1(buf,"MIPOPEN: 1,1",0,3,10) == 0) //Á¬½Ó³É¹¦
+ 629   3              {
+ 630   4                LedFreq = 7;  //700msÉÁË¸
+ 631   4                Second_AT_Command1("AT+MIPMODE=0,0,0","OK",0,1,5);    //·¢ËÍ½ÓÊÕ²ÉÓÃASCII
+ 632   4                if(Second_AT_Command1("AT+CCED=0,1","CCED: 4",1,3,5) == 0) //ÕÒµ½»ùÕ¾¶¨Î»
+ 633   4                {
+ 634   5                  GetStationAdd();  //»ñÈ¡»ùÕ¾µØÖ·
+ 635   5                  Send_Login();     //·¢ËÍµÇÂ½×´Ì¬    
+ 636   5                  UART2_Start=1; //·þÎñÆ÷»Ø¸´³¬Ê±¼ÆÊ±¿ªÊ¼ 
+ 637   5                  Heartbeat=0;   //Çå³ýÐÄÌøÖ¡¼ÆÊýÆ÷
+ 638   5                  Heart_beat=0;
+ 639   5                  HuiChuan =0;  
+ 640   5                }
+ 641   4                QieHuanSer  = 0;
+ 642   4                Module.Status = Flag_In_Wait;    //Á¬½Ó³É¹¦½øÈëµÈ´ý×´Ì¬
+ 643   4                Heartbeat=0;  //Çå³ýÐÄÌøÖ¡¼ÆÊýÆ÷
+ 644   4                Heart_beat=0;
+ 645   4                EX0 = 0;
+ 646   4                if((EEPROM_Data[29]&0x02) == 2)  //´ò¿ªÕð¶¯±¨¾¯
+ 647   4                {
+ 648   5                  EX0 = 1;
+ 649   5                }
+ 650   4              }
+ 651   3              else
+ 652   3              {
+ 653   4                QieHuanSer ++;          //Á¬½ÓÊ§°Ü Ê§°Ü¼ÇÂ¼´ÎÊý ´óÓÚModule.QieHuanCnt´Î¾Í»Ö¸´³ö³§ÉèÖÃ
+ 654   4                Module.Status = Flag_In_Normal;    //Á¬½ÓÊ§°ÜÐ£Ê±¹Ø»ú
+ 655   4                Module.OpenTime = 240;             //4·ÖÖÓÕÒ²»µ½ÐÅºÅ¹Ø»ú  
+ 656   4              }
+ 657   3              if(Module.QieHuanCnt != 9999 )       //´ËÖµÈç¹ûÎª 9999 Ôò²»ÇÐ»»·þÎñÆ÷
+ 658   3              {
+ 659   4                if(QieHuanSer > Module.QieHuanCnt) //100´ÎÁ¬½Ó²»ÉÏ·þÎñÆ÷ ¾Í»Ø¸´³ö³§ÉèÖÃ
+ 660   4                {
+ 661   5                  FactData[34] = Module.ServerIP[0];
+ 662   5                  FactData[35] = Module.ServerIP[1];
+ 663   5                  FactData[36] = Module.ServerIP[2];
+ 664   5                  FactData[37] = Module.ServerIP[3];
+ 665   5                  
+ 666   5                  FactData[38] = Module.TCPPort/256;
+ 667   5                  FactData[39] = Module.TCPPort%256;
+ 668   5                  
+ 669   5                  IapProgramBuf(FactData,UserADD,50);  //¼ÓÔØ³ö³§Öµ
+ 670   5                  QieHuanSer = 0;
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 12  
+
+ 671   5                  IAP_CONTR = 0x20;           //Èí¼þ¸´Î»,ÏµÍ³ÖØÐÂ´ÓÓÃ»§´úÂëÇø¿ªÊ¼ÔËÐÐ³ÌÐò
+ 672   5                }
+ 673   4              }
+ 674   3            }
+ 675   2          else
+ 676   2          {
+ 677   3            Module.Status = Flag_In_Normal;    //Á¬½ÓÊ§°ÜÐ£Ê±¹Ø»ú
+ 678   3            Module.OpenTime = 240;             //4·ÖÖÓÕÒ²»µ½ÐÅºÅ¹Ø»ú  
+ 679   3          }
+ 680   2        }
+ 681   1          /*
+ 682   1          else      //Ê¹ÓÃÓòÃû
+ 683   1          {
+ 684   1            sprintf(buf,"AT+MIPOPEN=1,\"TCP\",\"%s\",%ld,5000",Module.YuMing,Module.TCPPort);
+ 685   1            Second_AT_Command1("AT+MIPCALL=1,\"CMNET\"","+MIPCALL: 1",1,2,10);   //´ò¿ªGPRS
+ 686   1            if(Second_AT_Command1(buf,"+MIPOPEN: 1,1",1,3,10) == 0)
+ 687   1            {
+ 688   1              Second_AT_Command1("AT+MIPMODE=0,0,0","OK",1,1,5);    //·¢ËÍ½ÓÊÕ²ÉÓÃASCII
+ 689   1              Module.Status = Flag_In_Wait;    //Á¬½Ó³É¹¦½øÈëµÈ´ý×´Ì¬
+ 690   1              Heartbeat=0;  //Çå³ýÐÄÌøÖ¡¼ÆÊýÆ÷
+ 691   1              Heart_beat=0;
+ 692   1            }
+ 693   1            else
+ 694   1            {
+ 695   1              //Á¬½ÓÊ§°Ü Ê§°Ü¼ÇÂ¼´ÎÊý ´óÓÚ10´Î¾Í»Ö¸´³ö³§ÉèÖÃ
+ 696   1              Module.Status = Flag_In_Off;    //Á¬½ÓÊ§°Ü¹Ø»ú
+ 697   1            } 
+ 698   1          }
+ 699   1          */
+ 700   1      }
+ 701          /*******************************************************************************
+ 702          * º¯ÊýÃû : Rec_Server_Data
+ 703          * ÃèÊö   : ½ÓÊÕ·þÎñÆ÷Êý¾Ýº¯Êý
+ 704          * ÊäÈë   : 
+ 705          * Êä³ö   : 
+ 706          * ·µ»Ø   : 
+ 707          * ×¢Òâ   : 
+ 708          *******************************************************************************/
+ 709          void Rec_Server_Data(void)
+ 710          {
+ 711   1        if(UART2_RXD_FLAG == 1)       //Èç¹û´®¿Ú2½ÓÊÕÊý¾ÝÍê³É
+ 712   1        {
+ 713   2          //Buf2Temp();
+ 714   2          if(Find_String("MIPDATA: 1,",11,Uart2_Temp))      //Èô»º´æ×Ö·û´®ÖÐº¬ÓÐ+IPD
+ 715   2          { 
+ 716   3          Heartbeat=0;  //Çå³ýÐÄÌøÖ¡¼ÆÊýÆ÷
+ 717   3          Heart_beat=0;
+ 718   3          PramFlag = 0;
+ 719   3          if(Find_String("*MG20",5,Uart2_Temp))   // Find ÏàÓ¦×Ö·ûº¯Êý 
+ 720   3          {        
+ 721   4                if(Uart2_Temp[S_Point+5] == '0')       PramFlag &=  ~Save;                //´æ´¢Ö¸Áî   Õë¶Ô²¿·ÖÖ¸Áî
+             -ÓÐÐ§
+ 722   4                if(Uart2_Temp[S_Point+5] == '1')       PramFlag |=   Save;
+ 723   4                   
+ 724   4                if(Uart2_Temp[S_Point+6] == '0')       PramFlag &=  ~Answer;              //»Ø¸´Ö¸Áî   Õë¶ÔËùÓÐÖ
+             -¸ÁîÓÐÐ§
+ 725   4                if(Uart2_Temp[S_Point+6] == '1')      PramFlag |=   Answer;
+ 726   4                
+ 727   4                if(Find_String("BD(K",4,Uart2_Temp))      //¹â¸Ð±¨¾¯
+ 728   4                {
+ 729   5                  if(Uart2_Temp[S_Point+5]=='1') 
+ 730   5                  {
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 13  
+
+ 731   6                     *(Buffer+23) = 'B';
+ 732   6                     *(Buffer+24) = 'D';
+ 733   6                     PramFlag |=    (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 734   6                     EX1 = 1; 
+ 735   6                     EEPROM_Data[29] |= 0x01;
+ 736   6                  }              
+ 737   5                  if(Uart2_Temp[S_Point+5]=='0')
+ 738   5                  {
+ 739   6                     *(Buffer+23) = 'B';
+ 740   6                     *(Buffer+24) = 'D';
+ 741   6                     PramFlag |=    (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 742   6                     EX1 = 0;    
+ 743   6                     EEPROM_Data[29] &= ~0x01;
+ 744   6                  }
+ 745   5                }     
+ 746   4                else if(Find_String("AI(Q",4,Uart2_Temp))  //Õð¶¯±¨¾¯
+ 747   4                {
+ 748   5                  if(Uart2_Temp[S_Point+4]=='1')
+ 749   5                  {
+ 750   6                    EX0= 1;   
+ 751   6                    EEPROM_Data[29] |= 0x02;
+ 752   6                    *(Buffer+23) = 'A';
+ 753   6                    *(Buffer+24) = 'I';
+ 754   6                    PramFlag |=   (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 755   6                  }
+ 756   5                  if(Uart2_Temp[S_Point+4]=='0')
+ 757   5                  {
+ 758   6                    EX0= 0; 
+ 759   6                    EEPROM_Data[29] &=~ 0x02;
+ 760   6                    *(Buffer+23) = 'A';
+ 761   6                    *(Buffer+24) = 'I';
+ 762   6                    PramFlag |=   (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 763   6                  }             
+ 764   5                }
+ 765   4                else if(Find_String("BA0#",4,Uart2_Temp))   //ÖÕ¶ËÎÞÌõ¼þÖØÆô
+ 766   4                {
+ 767   5                   //Çå³ý±¨¾¯ÐÅÏ¢
+ 768   5                   PramFlag |=    (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 769   5                   EEPROM_Data[29] |= 0x04; //ÖØÆôÃüÁî±êÖ¾ ÖÃ1 ·¢ËÍÍê»ØÂëºóÖØÆôÇå0
+ 770   5                   EEPROM_Data[23] = 6;
+ 771   5                   *(Buffer+23) = 'B';
+ 772   5                   *(Buffer+24) = 'A';
+ 773   5                }
+ 774   4                else if(Find_String("BI",2,Uart2_Temp)) //ÉèÖÃ¶¨Ê±»Ø´«¼ä¸ô
+ 775   4                {
+ 776   5                  Asc_To_Hex(&Uart2_Temp[S_Point+2],4,&Uart2_Temp[S_Point+400]);   //ÉèÖÃ400²»Õ¼ÓÃBUF  ²»ÐèÒªÔÙ¿ª±Ù»º´æ
+             -×é      
+ 777   5                  *(Buffer+23) = 'B';
+ 778   5                  *(Buffer+24) = 'I';
+ 779   5                  if((Uart2_Temp[S_Point+400]*256 + Uart2_Temp[S_Point+401])>=0) //Êý¾ÝÐ£ÑéÕýÈ·
+ 780   5                  {
+ 781   6                    Module.HuiChuanTime = Uart2_Temp[S_Point+400]*256 + Uart2_Temp[S_Point+401];
+ 782   6                    PramFlag |=   (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 783   6                    EEPROM_Data[15] = Uart2_Temp[S_Point+400]; 
+ 784   6                    EEPROM_Data[16] = Uart2_Temp[S_Point+401]; 
+ 785   6                  }
+ 786   5                }
+ 787   4                else if(Find_String("BK",2,Uart2_Temp)) //ÉèÖÃÐÄÌø¼ä¸ô
+ 788   4                {
+ 789   5                  Asc_To_Hex(&Uart2_Temp[S_Point+2],4,&Uart2_Temp[S_Point+400]);
+ 790   5                  *(Buffer+23) = 'B';
+ 791   5                  *(Buffer+24) = 'K';
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 14  
+
+ 792   5                  if((Uart2_Temp[S_Point+400]*256 + Uart2_Temp[S_Point+401])>0) //Êý¾ÝÐ£ÑéÕýÈ·
+ 793   5                  {
+ 794   6                    Module.HeartTime = Uart2_Temp[S_Point+400]*256 + Uart2_Temp[S_Point+401];
+ 795   6                    EEPROM_Data[11]  = Uart2_Temp[S_Point+400];
+ 796   6                    EEPROM_Data[12]  = Uart2_Temp[S_Point+401];
+ 797   6                    PramFlag |=   (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 798   6                  }
+ 799   5                }
+ 800   4                else if(Find_String("BA1#",4,Uart2_Temp))   //ÖØÆô²¢ÇÒÔ¤Éè³ö³§Öµ
+ 801   4                {
+ 802   5                    IapProgramBuf(FactData,UserADD,50);  //¼ÓÔØ³ö³§Öµ
+ 803   5                    EEPROM_Data[29] |= 0x04;      //ÖØÆô±êÖ¾Î»ÖÃ1 ·¢ËÍÍê»ØÂëºóÖØÆôÇå0
+ 804   5                    EEPROM_Data[23] = 6;
+ 805   5                    PramFlag |=   AnswerReady;    //»Ø¸´Êý¾Ý
+ 806   5                    *(Buffer+23) = 'B';
+ 807   5                    *(Buffer+24) = 'A';
+ 808   5                }
+ 809   4                else if(Find_String(",GB",3,Uart2_Temp)||Find_String("0GB",3,Uart2_Temp)||Find_String("1GB",3,Uart2_T
+             -emp))      //ÉèÖÃ¹Ì¶¨Ê±¼äÉÏ´«
+ 810   4                {
+ 811   5                    Module.ShangChuanTime = (Uart2_Temp[S_Point+3]-'0')*1000 + (Uart2_Temp[S_Point+4]-'0')*100+ (Uart2
+             -_Temp[S_Point+5]-'0')*10 + Uart2_Temp[S_Point+6]-'0';
+ 812   5                    if(Uart2_Temp[S_Point+9] == '#')  
+ 813   5                    {
+ 814   6                     Module.ShangChuanCnt   = Uart2_Temp[S_Point+8] - '0';
+ 815   6                    }
+ 816   5                    else if(Uart2_Temp[S_Point+10] == '#')
+ 817   5                    {
+ 818   6                      Module.ShangChuanCnt  = (Uart2_Temp[S_Point+8]-'0')*10 + Uart2_Temp[S_Point+9] - '0';
+ 819   6                    }
+ 820   5                    else if(Uart2_Temp[S_Point+11] == '#')
+ 821   5                    {
+ 822   6                      Module.ShangChuanCnt  = (Uart2_Temp[S_Point+8]-'0')*100 + (Uart2_Temp[S_Point+9]-'0')*10 + Uart2_T
+             -emp[S_Point+10] - '0';
+ 823   6                    }
+ 824   5                    else if(Uart2_Temp[S_Point+12] == '#')
+ 825   5                    {
+ 826   6                      Module.ShangChuanCnt  = (Uart2_Temp[S_Point+8]-'0')*1000 + (Uart2_Temp[S_Point+9]-'0')*100 + (Uart
+             -2_Temp[S_Point+10]-'0')*10 + Uart2_Temp[S_Point+11] - '0';
+ 827   6                    }
+ 828   5                    EEPROM_Data[25]  = Module.ShangChuanCnt/100;
+ 829   5                    EEPROM_Data[26]  = Module.ShangChuanCnt%100;
+ 830   5                    Module.ShangChuanDelay = 1440/Module.ShangChuanCnt;
+ 831   5                    PramFlag |=   (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 832   5                    *(Buffer+23) = 'G';
+ 833   5                    *(Buffer+24) = 'B';
+ 834   5                }
+ 835   4                else if(Find_String("AH(P",4,Uart2_Temp))     //ÉèÖÃ¹¤×÷Ä£Ê½
+ 836   4                {
+ 837   5                  if((Uart2_Temp[S_Point+4])=='1')  //×·×ÙÄ£Ê½
+ 838   5                  {
+ 839   6                    if((Uart2_Temp[S_Point+6])=='0')//³ÖÐø×·×ÙÄ£Ê½
+ 840   6                    {
+ 841   7                      PramFlag |=   (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 842   7                      *(Buffer+23) = 'A';
+ 843   7                      *(Buffer+24) = 'H';
+ 844   7                      Module.ZhuiZongTime = 86400;      //ÉèÖÃ³ÖÐø×·×ÙÄ£Ê½Ê±¼ä1Ìì £¨ÀàËÆÓÚ³ÖÐøÄ£Ê½£©
+ 845   7                      EEPROM_Data[19] = 14;
+ 846   7                      EEPROM_Data[20] = 40;  //1440·ÖÖÓ
+ 847   7                      Module.OpenTime = Module.ZhuiZongTime + 60;      //ÉèÖÃ³ÖÐø×·×ÙÄ£Ê½Ê±¼ä1Ìì £¨ÀàËÆÓÚ³ÖÐøÄ£Ê½£©
+ 848   7                    }
+ 849   6                    else if((Uart2_Temp[S_Point+6]=='1')&&(Uart2_Temp[S_Point+13]=='#'))
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 15  
+
+ 850   6                    {
+ 851   7                      PramFlag |=  (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 852   7                      *(Buffer+23) = 'A';
+ 853   7                      *(Buffer+24) = 'H';
+ 854   7                      Module.ZhuiZongTime = (Uart2_Temp[S_Point+8]-'0')*1000 + (Uart2_Temp[S_Point+9]-'0')*100 + (Uart2_
+             -Temp[S_Point+10]-'0')*10 + (Uart2_Temp[S_Point+11]-'0');
+ 855   7                      Time_wake = 1;
+ 856   7                      Module.OpenTime = Module.ZhuiZongTime*60 + 60;  //¿ª»úÊ±¼ä±È×·×ÙÊ±¼ä¶àÒ»·ÖÖÓ
+ 857   7                    }
+ 858   6                  }
+ 859   5                  else if(Uart2_Temp[S_Point+4]=='0')  //Ê¡µçÄ£Ê½
+ 860   5                  {
+ 861   6                    PramFlag |=   (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 862   6                    *(Buffer+23) = 'A';
+ 863   6                    *(Buffer+24) = 'H';
+ 864   6                    Module.ZhuiZongTime = 0;  //Ê¡µçÄ£Ê½ÏÂ  ×·×ÙÊ±¼äÎª0
+ 865   6                    EEPROM_Data[19] = 0;
+ 866   6                    EEPROM_Data[20] = 0;
+ 867   6                    Module.OpenTime = EEPROM_Data[13]*256 + EEPROM_Data[14];//Ê¡µçÄ£Ê½ÉèÖÃ»½ÐÑÊ±¼ä 
+ 868   6                    Time_wake = (Module.OpenTime-10)*20;  //¼´½«¹Ø»úµôµç
+ 869   6                  }           
+ 870   5                }
+ 871   4                else if(Find_String("BC#",3,Uart2_Temp))    //ÖÕ¶Ë½â³ý±¨¾¯
+ 872   4                {
+ 873   5                    Module.alarm[10] = 0;            //Çå³ý±¨¾¯±êÖ¾Î»
+ 874   5                    Module.alarm[11] = 0;
+ 875   5                    *(Buffer+23) = 'B';
+ 876   5                    *(Buffer+24) = 'C';
+ 877   5                    PramFlag |=   AnswerReady;  
+ 878   5                    RemoveAlarm = 1;   //½â³ý±¨¾¯±êÖ¾Î»           
+ 879   5                }
+ 880   4                
+ 881   4                else if(Find_String("BE#",3,Uart2_Temp))    //²éÑ¯¶¨Î»ÐÅÏ¢  Ò»¶¨»Ø¸´Êý¾Ý
+ 882   4                {
+ 883   5                  Send_AnswerADDR();
+ 884   5                }
+ 885   4                
+ 886   4                else if(Find_String("DE",2,Uart2_Temp))     //ÉèÖÃÍøÂçÊ±¼ä
+ 887   4                {
+ 888   5                    if((Uart2_Temp[S_Point+2] =='(')&&(Uart2_Temp[S_Point+17] = ')'))  //Êý¾ÝÐ£ÑéÕýÈ·
+ 889   5                    {
+ 890   6                        Time.year  =  (Uart2_Temp[S_Point+3]-'0')*1000+(Uart2_Temp[S_Point+4]-'0')*100+(Uart2_Temp[S_Poi
+             -nt+5]-'0')*10 +Uart2_Temp[S_Point+6] - '0';
+ 891   6                        Time.month =  (Uart2_Temp[S_Point+7] -'0')*10 +Uart2_Temp[S_Point+8]  - '0';
+ 892   6                        Time.day   =  (Uart2_Temp[S_Point+9]-'0')*10  +Uart2_Temp[S_Point+10] - '0';
+ 893   6                        Time.hour  =  (Uart2_Temp[S_Point+11]-'0')*10 +Uart2_Temp[S_Point+12] - '0';     //Ê±            
+             -          
+ 894   6                        Time.min   =  (Uart2_Temp[S_Point+13]-'0')*10 +Uart2_Temp[S_Point+14] - '0';     //·Ö
+ 895   6                        Time.sec   =  (Uart2_Temp[S_Point+15]-'0')*10 +Uart2_Temp[S_Point+16] - '0';     //Ãë               
+             -        
+ 896   6                        *(Buffer+23) = 'D';
+ 897   6                        *(Buffer+24) = 'E';
+ 898   6                        PramFlag |=   AnswerReady;
+ 899   6                        Get_RTC();
+ 900   6                    }
+ 901   5                }
+ 902   4                else if((Find_String("1DA",3,Uart2_Temp)||Find_String("0DA",3,Uart2_Temp))) //ÉèÖÃIPµØÖ·
+ 903   4                {
+ 904   5                    if(!Find_String(")",1,Uart2_Temp))   //IPµØÖ··½Ê½»ñÈ¡Êý¾Ý
+ 905   5                    {   
+ 906   6                       if(Uart2_Temp[S_Point+19] == '#')  
+ 907   6                       {
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 16  
+
+ 908   7                        Asc_To_Hex(&Uart2_Temp[S_Point+3],16,&Uart2_Temp[S_Point+400]);   
+ 909   7                      
+ 910   7                        Module.ServerIP[0] = Uart2_Temp[S_Point+400];
+ 911   7                        Module.ServerIP[1] = Uart2_Temp[S_Point+401];
+ 912   7                        Module.ServerIP[2] = Uart2_Temp[S_Point+402];
+ 913   7                        Module.ServerIP[3] = Uart2_Temp[S_Point+403];   
+ 914   7                        Module.UDPPort     = Uart2_Temp[S_Point+404]*256 + Uart2_Temp[S_Point+405];        
+ 915   7                        Module.TCPPort     = Uart2_Temp[S_Point+406]*256 + Uart2_Temp[S_Point+407];
+ 916   7                        Module.YuORIP      = 0;               
+ 917   7                        EEPROM_Data[0] =  Module.ServerIP[0] ;
+ 918   7                        EEPROM_Data[1] =  Module.ServerIP[1] ;
+ 919   7                        EEPROM_Data[2] =  Module.ServerIP[2] ;
+ 920   7                        EEPROM_Data[3] =  Module.ServerIP[3] ;
+ 921   7                        EEPROM_Data[6] =  Uart2_Temp[S_Point+404] ;
+ 922   7                        EEPROM_Data[7] =  Uart2_Temp[S_Point+405] ;
+ 923   7                        EEPROM_Data[4] =  Uart2_Temp[S_Point+406] ;
+ 924   7                        EEPROM_Data[5] =  Uart2_Temp[S_Point+407] ;
+ 925   7                        EEPROM_Data[8] =  0 ;
+ 926   7                        *(Buffer+23) = 'D';
+ 927   7                        *(Buffer+24) = 'A';
+ 928   7                        PramFlag |=   (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 929   7                        EEPROM_Data[29] |= 0x04; //ÖØÆôÃüÁî±êÖ¾ ÖÃ1 ·¢ËÍÍê»ØÂëºóÖØÆôÇå0
+ 930   7                        
+ 931   7                        Time_wake = (Module.OpenTime-20)*20;   //ÊÕµ½ÇÐ»»IPµØÖ·Ö¸Áî  ½«ÐÝÃßÊ±¼ä¸ÄÎª20Ãëºó
+ 932   7                       }
+ 933   6                    }
+ 934   5                    /*
+ 935   5                   if(Find_String("DA(",3))
+ 936   5                    {
+ 937   5                        u8 i,j,k;               //  »ñÈ¡ÓòÃûÎ»ÖÃ
+ 938   5                        i = S_Point+3;          // £¨µÄÎ»ÖÃ
+ 939   5                        if(Find_String(")",1))  //  )µÄÎ»ÖÃ
+ 940   5                        {
+ 941   5                            j = S_Point;
+ 942   5                            if((j-i)>8)         //ÓòÃûÐÅÏ¢ÕýÈ·
+ 943   5                               for(k=0;k<(j-i);k++)
+ 944   5                                  {
+ 945   5                                     Module.YuMing[k] = Uart2_Buf[i+k];
+ 946   5                                  }
+ 947   5                            Module.YuMing[k] = '\0';
+ 948   5                            Asc_To_Hex(&Uart2_Buf[S_Point+1],8,&Uart2_Buf[S_Point+404]);      
+ 949   5                            Module.UDPPort     = Uart2_Buf[S_Point+404]*256 + Uart2_Buf[S_Point+405];        
+ 950   5                            Module.TCPPort     = Uart2_Buf[S_Point+406]*256 + Uart2_Buf[S_Point+407];         
+ 951   5                            Module.YuORIP = 1;
+ 952   5                            //EEPROM_Data[0] =  Module.ServerIP[0] ;
+ 953   5                            //EEPROM_Data[1] =  Module.ServerIP[1] ;
+ 954   5                            //EEPROM_Data[2] =  Module.ServerIP[2] ;
+ 955   5                            //EEPROM_Data[3] =  Module.ServerIP[3] ;
+ 956   5                            EEPROM_Data[4] =  Uart2_Buf[S_Point+404] ;
+ 957   5                            EEPROM_Data[5] =  Uart2_Buf[S_Point+405] ;
+ 958   5                            EEPROM_Data[6] =  Uart2_Buf[S_Point+406] ;
+ 959   5                            EEPROM_Data[7] =  Uart2_Buf[S_Point+407] ;
+ 960   5                            EEPROM_Data[8] =  0 ;
+ 961   5                            *(Buffer+22) = 'D';
+ 962   5                            *(Buffer+23) = 'E';
+ 963   5                            PramFlag |=   AnswerReady;
+ 964   5                            PramFlag |=   SaveReady;      //±£´æÊý¾Ý
+ 965   5                        }
+ 966   5                    } 
+ 967   5                    */
+ 968   5                } 
+ 969   4              else if(Find_String("QH,",3,Uart2_Temp))   //ÇÐ»»·þÎñÆ÷Ö¸Áî
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 17  
+
+ 970   4              {
+ 971   5                Module.QieHuanCnt =  (1000*(Uart2_Temp[S_Point+3]-'0')) + (100*(Uart2_Temp[S_Point+4]-'0')) + (10*(Ua
+             -rt2_Temp[S_Point+5]-'0')) + (Uart2_Temp[S_Point+6]- '0');
+ 972   5                EEPROM_Data[32] =  Module.QieHuanCnt/100;
+ 973   5                EEPROM_Data[33] =  Module.QieHuanCnt%100;
+ 974   5                
+ 975   5                PramFlag |=   (SaveReady + AnswerReady);      //±£´æÊý¾Ý
+ 976   5                *(Buffer+23) = 'Q';
+ 977   5                *(Buffer+24) = 'H';
+ 978   5                //EEPROM_Data[29] |= 0x04; //ÖØÆôÃüÁî±êÖ¾ ÖÃ1 ·¢ËÍÍê»ØÂëºóÖØÆôÇå0
+ 979   5                
+ 980   5                EEPROM_Data[0] =  EEPROM_Data[34];
+ 981   5                EEPROM_Data[1] =  EEPROM_Data[35] ;
+ 982   5                EEPROM_Data[2] =  EEPROM_Data[36] ;
+ 983   5                EEPROM_Data[3] =  EEPROM_Data[37] ;
+ 984   5                
+ 985   5                EEPROM_Data[6] =  EEPROM_Data[38] ;
+ 986   5                EEPROM_Data[7] =  EEPROM_Data[39] ;
+ 987   5                EEPROM_Data[4] =  '0' ;
+ 988   5                EEPROM_Data[5] =  '0' ;
+ 989   5              }
+ 990   4              else if(Find_String("BBH",3,Uart2_Temp))   //»ñÈ¡°æ±¾ºÅ
+ 991   4              {
+ 992   5                PramFlag |=    AnswerReady;      //»Ø¸´Êý¾Ý
+ 993   5                *(Buffer+23) = '1';
+ 994   5                *(Buffer+24) = '1';
+ 995   5              }
+ 996   4           }
+ 997   3          CLR_Buf2();
+ 998   3         }
+ 999   2         if(Find_String("MIPCALL: 0",10,Uart2_Temp))  //ÖØÐÂÁ¬½Ó·þÎñÆ÷
+1000   2        {
+1001   3          if(Time_wake < ((Module.OpenTime-10)*20))
+1002   3          {
+1003   4            Connect_Server_Test();           //Á¬½Ó·þÎñÆ÷
+1004   4          } 
+1005   3        }
+1006   2        if((Find_String("MIPCLOSE: 1,0",13,Uart2_Temp))||(Find_String("CME ERROR: 4",12,Uart2_Temp)))
+1007   2        {
+1008   3          if(Time_wake < ((Module.OpenTime-10)*20))
+1009   3          {
+1010   4            Connect_Server_Test();           //Á¬½Ó·þÎñÆ÷
+1011   4          }
+1012   3        }
+1013   2        
+1014   2        if(Find_String("*MG20YAB#",9,Uart2_Temp))
+1015   2        {
+1016   3          Send_SimNum();
+1017   3          UART2_Start = 0;
+1018   3          XiangYingFlag = 0;
+1019   3        }
+1020   2        //Heartbeat=0;  //Çå³ýÐÄÌøÖ¡¼ÆÊýÆ÷
+1021   2        //Heart_beat=0;
+1022   2        CLR_Buf2();
+1023   2       }
+1024   1      }
+1025          
+1026          /*******************************************************************************
+1027          * º¯ÊýÃû : Find
+1028          * ÃèÊö   : ÅÐ¶Ï»º´æÖÐÊÇ·ñº¬ÓÐÖ¸¶¨µÄ×Ö·û´®
+1029          * ÊäÈë   : 
+1030          * Êä³ö   : 
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 18  
+
+1031          * ·µ»Ø   : unsigned char:1 ÕÒµ½Ö¸¶¨×Ö·û£¬0 Î´ÕÒµ½Ö¸¶¨×Ö·û 
+1032          * ×¢Òâ   : 
+1033          *******************************************************************************/
+1034          /*
+1035          u8 Find(u8 *a)
+1036          { 
+1037            if(strstr(Uart2_Buf,a)!=NULL)
+1038                return 1;
+1039            else
+1040                return 0;
+1041          }
+1042          */
+1043          
+1044          
+1045          
+1046          
+1047          void Send_AnswerADDR(void) //·¢ËÍµãÃûÐÅÏ¢ 
+1048          {
+1049   1          if(Get_GPS() == 1)     //GPS¶¨Î»
+1050   1          {
+1051   2            GPS_ADDR();  //·¢ËÍGPSÎ»ÖÃ
+1052   2          }
+1053   1          else if (GetStationAdd() == 1)  //»ñÈ¡ÁË»ùÕ¾Êý¾ÝÁË
+1054   1          {
+1055   2            BaseStationADDR();   //»ùÕ¾¶¨Î»
+1056   2          }
+1057   1      }
+1058          
+1059          
+1060          
+1061          //Frame ´ý²éBUF    length£ºFrameµÄ³¤¶È   BUF_MAX  600
+1062          unsigned char Find_String(unsigned char Frame[],unsigned char length,u8 Temp[])
+1063          { 
+1064   1        int i,j;
+1065   1        IE2  &= ~0x01;    //¹Ø±Õ´®¿Ú2ÖÐ¶Ï
+1066   1        for (i=0;i<649;i++)         
+1067   1            { 
+1068   2              j=0;                                   
+1069   2              if (Temp[i]==Frame[j])//²éÕÒ2¸ö
+1070   2                 { 
+1071   3                   for (j=0;j<length;j++)
+1072   3                        {
+1073   4                         if (Temp[i+j]!=Frame[j])
+1074   4                             break;
+1075   4                        }
+1076   3                   if (j>=length) 
+1077   3                      { 
+1078   4                        S_Point=i;
+1079   4                        return 1;
+1080   4                        }
+1081   3                  }
+1082   2              }
+1083   1      IE2  |= 0x01;     //Ê¹ÄÜ´®¿Ú2ÖÐ¶Ï
+1084   1         return 0;
+1085   1      }
+1086          
+1087          
+1088          void Send_Login(void)  //ÉÏµç·¢ËÍµÇÂ½ÐÅÏ¢
+1089          {
+1090   1        u8 i;
+1091   1        *Buffer        =   '*';    //Ö¡Í·
+1092   1        *(Buffer+1)    =   'M';
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 19  
+
+1093   1        *(Buffer+2)    =   'G';
+1094   1        *(Buffer+3)    =   '2';    
+1095   1        *(Buffer+4)    =   '0';  
+1096   1        *(Buffer+5)    =   '1';    //»Ø¸´×´Ì¬ 
+1097   1      
+1098   1        for(i=0;i<15;i++)     
+1099   1        { 
+1100   2          *(Buffer+6+i) = Module.IMEI[i];  //6-15 IMEIºÅÂë
+1101   2        }
+1102   1        *(Buffer+21)   =   ',';
+1103   1        *(Buffer+22)   =   'A';           //¶¨Ê±»Ø´«µÄ¶¨Î»ÐÅÏ¢
+1104   1      
+1105   1        *(Buffer+23)   =   'B';           //¶¨Î»Êý¾Ý
+1106   1        *(Buffer+24)   =   '&';
+1107   1        *(Buffer+25)   =   'P';
+1108   1      
+1109   1        *(Buffer+26)   =   Module.StationAdd[0];
+1110   1        *(Buffer+27)   =   Module.StationAdd[1];
+1111   1        *(Buffer+28)   =   Module.StationAdd[2];
+1112   1        *(Buffer+29)   =   Module.StationAdd[3];
+1113   1        *(Buffer+30)   =   Module.StationAdd[4];
+1114   1        *(Buffer+31)   =   Module.StationAdd[5];
+1115   1        *(Buffer+32)   =   Module.StationAdd[6];
+1116   1        *(Buffer+33)   =   Module.StationAdd[7];
+1117   1        *(Buffer+34)   =   Module.StationAdd[8];
+1118   1        *(Buffer+35)   =   Module.StationAdd[9];
+1119   1        *(Buffer+36)   =   Module.StationAdd[10];
+1120   1        *(Buffer+37)   =   Module.StationAdd[11];
+1121   1        *(Buffer+38)   =   Module.StationAdd[12];
+1122   1        *(Buffer+39)   =   Module.StationAdd[13];
+1123   1        *(Buffer+40)   =   Module.StationAdd[14];
+1124   1        *(Buffer+41)   =   Module.StationAdd[15];
+1125   1            
+1126   1        *(Buffer+42)   =  '&';      
+1127   1        *(Buffer+43)   =  'B';
+1128   1        *(Buffer+44)   =  '0';
+1129   1        *(Buffer+45)   =  '0';
+1130   1        *(Buffer+46)   =  '0';
+1131   1        *(Buffer+47)   =  '0';
+1132   1        *(Buffer+48)   =  '0';
+1133   1        *(Buffer+49)   =  '0';
+1134   1        *(Buffer+50)   =  '0';
+1135   1        *(Buffer+51)   =  '0';
+1136   1        *(Buffer+52)   =  '0';
+1137   1        *(Buffer+53)   =  '0';
+1138   1      
+1139   1        *(Buffer+54)   =  '&';     
+1140   1        *(Buffer+55)   =  'W';
+1141   1        *(Buffer+56)   =  Module.alarm[10] + '0';
+1142   1        *(Buffer+57)   =  Module.alarm[11] + '0';
+1143   1      
+1144   1        *(Buffer+58)   =  '&';        
+1145   1        *(Buffer+59)   =  'G';     
+1146   1        *(Buffer+60)   =  '0';
+1147   1        *(Buffer+61)   =  '0';
+1148   1        *(Buffer+62)   =  '0';
+1149   1        *(Buffer+63)   =  '0';
+1150   1        *(Buffer+64)   =  '0';
+1151   1        *(Buffer+65)   =  '0';
+1152   1      
+1153   1        *(Buffer+66)   =  '&';    
+1154   1        *(Buffer+67)   =  'M';    
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 20  
+
+1155   1        *(Buffer+68)   =  Module.DianLiang[0];
+1156   1        *(Buffer+69)   =  Module.DianLiang[1];
+1157   1        *(Buffer+70)   =  Module.DianLiang[2]; 
+1158   1      
+1159   1        *(Buffer+71)   =  '&';
+1160   1        *(Buffer+72)   =  'N';
+1161   1        *(Buffer+73)   =  Module.CSQ[0];  //GSMÐÅºÅÇ¿¶È
+1162   1        *(Buffer+74)   =  Module.CSQ[1];
+1163   1      
+1164   1        *(Buffer+75)   =  '&';
+1165   1        *(Buffer+76)   =  'O';
+1166   1        *(Buffer+77)   =  '0';
+1167   1        *(Buffer+78)   =  '0';   
+1168   1        *(Buffer+79)   =  '0';
+1169   1        *(Buffer+80)   =  '0';
+1170   1        
+1171   1        *(Buffer+81)   =  '&';
+1172   1        *(Buffer+82)   =  'Z';
+1173   1        *(Buffer+83)   =  Module.ChongQiMess[0] + '0';
+1174   1        *(Buffer+84)   =  Module.ChongQiMess[1] + '0';
+1175   1        
+1176   1        *(Buffer+85)   =  '&';
+1177   1        *(Buffer+86)  =   'T';
+1178   1        *(Buffer+87)   =  (Module.serNum/1000) + '0';
+1179   1        *(Buffer+88)   =  (Module.serNum/100)%10 + '0';
+1180   1        *(Buffer+89)   =  (Module.serNum/10)%10 + '0';
+1181   1        *(Buffer+90)   =  (Module.serNum)%10 + '0';
+1182   1      
+1183   1        *(Buffer+91)   =  '#';    //Ö¡Î²
+1184   1         Second_AT_Command1("AT+MIPSEND=1,92",">",0,1,1);
+1185   1         UART2_Send_Len(Buffer,92);                  
+1186   1         UART2_SendData(0X1A);      //Æô¶¯·¢ËÍÊý¾Ý
+1187   1         
+1188   1         Module.serNum ++;          //·¢ÍêÒ»Ö¡ÐòÁÐºÅ+1 
+1189   1         Heartbeat = 0;
+1190   1         delay_ms(100);
+1191   1        // CLR_Buf2();  
+1192   1      }
+1193          
+1194          void Send_Answer(void)                //Ä£¿éÊÇ·ñ»ØÂë
+1195          {
+1196   1         if((PramFlag&Answer) == 0x02)        //ÒªÇóÄ£¿é»Ø¸´Ö¸Áî
+1197   1        {
+1198   2          if((PramFlag&AnswerReady) == 0x08)  //Ä£¿é×¼±¸ºÃ»Ø´«Êý¾Ý
+1199   2          {
+1200   3            u8 i;  
+1201   3            *Buffer      = '*';
+1202   3            *(Buffer+1)  = 'M';
+1203   3            *(Buffer+2)  = 'G';
+1204   3            *(Buffer+3)  = '2';
+1205   3            *(Buffer+4)  = '0';
+1206   3            *(Buffer+5)  = '0';
+1207   3            for(i=0;i<15;i++)
+1208   3              {
+1209   4                *(Buffer+6+i)= Module.IMEI[i];
+1210   4              }
+1211   3            *(Buffer+21) = ',';
+1212   3            *(Buffer+22) = 'Y';
+1213   3              
+1214   3            *(Buffer+25) = '&';
+1215   3            *(Buffer+26) = 'T';
+1216   3            *(Buffer+27) =  (Module.serNum/1000) + '0';
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 21  
+
+1217   3            *(Buffer+28) =  (Module.serNum/100)%10 + '0';
+1218   3            *(Buffer+29) =  (Module.serNum/10)%10 + '0';
+1219   3            *(Buffer+30) =  (Module.serNum)%10 + '0';
+1220   3            *(Buffer+31) = '#';
+1221   3           
+1222   3            Second_AT_Command1("AT+MIPSEND=1,32",">",0,1,1);
+1223   3              
+1224   3            UART2_Send_Len(Buffer,32);                   
+1225   3            UART2_SendData(0X1A);      //Æô¶¯·¢ËÍÊý¾Ý
+1226   3            Module.serNum ++;          //·¢ËÍÍêÒ»Ö¡ ÐòÁÐºÅ¼Ó1
+1227   3            Heartbeat = 0;    //Çå³ýÐÄÌø
+1228   3      
+1229   3            if((EEPROM_Data[29] &0x04) == 4)
+1230   3              {
+1231   4                delay_ms(2000);
+1232   4                UART2_SendString("AT+MIPCLOSE=1");   //¹Ø±ÕÁ¬½Ó
+1233   4                UART2_SendLR(); 
+1234   4                delay_ms(2000);
+1235   4                IAP_CONTR = 0x20;           //Èí¼þ¸´Î»,ÏµÍ³ÖØÐÂ´ÓÓÃ»§´úÂëÇø¿ªÊ¼ÔËÐÐ³ÌÐò
+1236   4              }
+1237   3          }   
+1238   2          PramFlag &= ~Answer; 
+1239   2          PramFlag &= ~AnswerReady;
+1240   2        } 
+1241   1        if((PramFlag&AnswerADDR)==0x10)  //ÐèÒª·¢ËÍµãÃûÐÅÏ¢  ÌØÊâ»ØÂë
+1242   1        {
+1243   2          Send_AnswerADDR();    //·¢ËÍµãÃûÐÅÏ¢
+1244   2          if(strstr(Uart2_Buf,"MIPDATA")==NULL)  //Ñ¡ÔñÊÇ·ñÇå³ý»º´æ
+1245   2            CLR_Buf2();  
+1246   2        }
+1247   1        if(Heart_beat > 0)  //·¢ËÍÐÄÌø°ü
+1248   1        {       
+1249   2          Send_Heart();   
+1250   2          Heart_beat = 0;//Çå³ýÐÄÌø
+1251   2          Heartbeat  = 0;
+1252   2          if(strstr(Uart2_Buf,"MIPDATA")==NULL)  //Ñ¡ÔñÊÇ·ñÇå³ý»º´æ
+1253   2            CLR_Buf2();  
+1254   2        }   
+1255   1        if((Hui_Chuan == 1)&&(HuiChuanCnt<Module.HuiChuanCnt))
+1256   1        {
+1257   2          HuiChuanCnt++;
+1258   2          Hui_Chuan = 0;
+1259   2          Send_AnswerADDR();//·¢ËÍ¶¨Î»ÐÅÏ¢
+1260   2        }
+1261   1        if(XiangYingFlag == 1)//Ä£¿é·¢ËÍÍê·þÎñÆ÷»ØÂë±êÖ¾
+1262   1        {
+1263   2          Send_SimNum();
+1264   2          UART2_Start = 0;
+1265   2          XiangYingFlag = 0;
+1266   2        }
+1267   1        if(GuZhang_Time == 1)//ÓÐ¹ÊÕÏ±¨¾¯
+1268   1        {
+1269   2          Send_AnswerADDR();//·¢ËÍ¶¨Î»ÐÅÏ¢
+1270   2          Guzhang_Flag = 0;
+1271   2          GuZhang_Time = 0;
+1272   2          GuZhang_Start= 0;
+1273   2          EX0 = 1;
+1274   2        }     
+1275   1        if(CloseFlag == 1) //¹Ø»úÇ°ÏÂÏß ¹Ø±ÕÁ¬½Ó
+1276   1        {
+1277   2         Time_wake++;
+1278   2         UART2_SendString("AT+MIPCLOSE=1");   //¹Ø±ÕÁ¬½Ó
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 22  
+
+1279   2         UART2_SendLR();  
+1280   2         CloseFlag = 0;
+1281   2         //Module.Status = Flag_In_Init;
+1282   2        }
+1283   1        if(HuiChuan  > (Module.HuiChuanTime*20))
+1284   1        {
+1285   2          Hui_Chuan = 1;  //»Ø´«Ê±¼äµ½ÁË
+1286   2          Time.sec += Module.HuiChuanTime;
+1287   2          Get_RTC();
+1288   2          HuiChuan  = 0;
+1289   2        }
+1290   1      }
+1291          
+1292          void Save_EEPROM(void)      //Ä£¿éÊÇ·ñ±£´æ²ÎÊý
+1293          {
+1294   1        if(PramFlag&Save == 0X01)
+1295   1        {
+1296   2          if(PramFlag&SaveReady == 0X04)
+1297   2          {
+1298   3            IapProgramBuf(EEPROM_Data,UserADD,50);  //½«Êý¾Ý±£´æµ½EEPROM   
+1299   3          }
+1300   2          PramFlag &= ~SaveReady;
+1301   2          PramFlag &= ~Save;
+1302   2        }
+1303   1      }
+1304          
+1305          void Asc_To_Hex(unsigned char *dat,unsigned char length,unsigned char *data1) //¸ßÎ»ÔÚÇ°
+1306          { 
+1307   1        int i;
+1308   1        for (i=0;i<length;i++)
+1309   1            { 
+1310   2              switch( *(dat+i*2))
+1311   2                 { 
+1312   3                   case '0':
+1313   3                   case '1':
+1314   3                   case '2':
+1315   3                   case '3':
+1316   3                   case '4':
+1317   3                   case '5':
+1318   3                   case '6':
+1319   3                   case '7':
+1320   3                   case '8':
+1321   3                   case '9':*(data1+i)=(*(dat+i*2)-0x30)*16;break;
+1322   3                   case 'A':
+1323   3                   case 'B':
+1324   3                   case 'C':
+1325   3                   case 'D':
+1326   3                   case 'E':
+1327   3                   case 'F':*(data1+i)=(*(dat+i*2)-0x37)*16;break;
+1328   3                   case 'a':
+1329   3                   case 'b':
+1330   3                   case 'c':
+1331   3                   case 'd':
+1332   3                   case 'e':
+1333   3                   case 'f':*(data1+i)=(*(dat+i*2+1)-0x57)+*(data1+i);break;
+1334   3                   default:*(data1+i)=0;break;
+1335   3                  }
+1336   2              switch(*(dat+i*2+1))
+1337   2                 { 
+1338   3                   case '0':
+1339   3                   case '1':
+1340   3                   case '2':
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 23  
+
+1341   3                   case '3':
+1342   3                   case '4':
+1343   3                   case '5':
+1344   3                   case '6':
+1345   3                   case '7':
+1346   3                   case '8':
+1347   3                   case '9':*(data1+i)=(*(dat+i*2+1)-0x30)+*(data1+i);break;
+1348   3                   case 'A':
+1349   3                   case 'B':
+1350   3                   case 'C':
+1351   3                   case 'D':
+1352   3                   case 'E':
+1353   3                   case 'F':*(data1+i)=(*(dat+i*2+1)-0x37)+*(data1+i);break;
+1354   3                   case 'a':
+1355   3                   case 'b':
+1356   3                   case 'c':
+1357   3                   case 'd':
+1358   3                   case 'e':
+1359   3                   case 'f':*(data1+i)=(*(dat+i*2+1)-0x57)+*(data1+i);break;
+1360   3                   default:*(data1+i)=0;break;
+1361   3                   }  
+1362   2              }
+1363   1      }
+1364          
+1365          u8 GetStationAdd(void)     //»ùÕ¾Î»ÖÃÊý¾Ý
+1366          {
+1367   1      //AT+CCED=0,2
+1368   1      //+CCED: 460,00,50b9,156a,18,48,35,99
+1369   1        u8 *p1,dx;       
+1370   1        u8 posx,res=0;    
+1371   1        
+1372   1        //if(strstr(Uart2_Buf,"MIPDATA")==NULL)  //Ñ¡ÔñÊÇ·ñÇå³ý»º´æ
+1373   1        //   CLR_Buf2();
+1374   1        //UART2_RXD_FLAG = 0; 
+1375   1        //UART2_SendString("AT+CCED=0,1");  //»ñÈ¡µ±Ç°·þÎñµÄ»ùÕ¾ÐÅÏ¢
+1376   1        //UART2_SendLR(); 
+1377   1        //Uart2_RXD_Chaoshi = 800;
+1378   1        if(Second_AT_Command1("AT+CCED=0,1","CCED: 4",1,3,5) == 0)
+1379   1        //while(!UART2_RXD_FLAG);
+1380   1        //Buf2Temp();
+1381   1        {
+1382   2          if(Find_String("CCED: 4",7,Uart2_Temp))
+1383   2          {
+1384   3            res=1;
+1385   3            Module.StationAdd[0] = '0';
+1386   3            Module.StationAdd[1] = '4';
+1387   3            Module.StationAdd[2] = '6';
+1388   3            Module.StationAdd[3] = '0';               //¹ú¼Ò±êÊ¶
+1389   3            p1=(u8*)strstr((const char *)Uart2_Temp,"CCED");
+1390   3            
+1391   3            posx=NMEA_Comma_Pos(p1,1);                //ÖÕ¶ËÔËÓªÉÌ±êÊ¶
+1392   3            if(posx!=0XFF)
+1393   3            {
+1394   4              NMEA_StrBuf(p1+posx,&dx);             
+1395   4              Module.StationAdd[4] = '0';
+1396   4              Module.StationAdd[5] = '0';
+1397   4              Module.StationAdd[6] = z1[0];
+1398   4              Module.StationAdd[7] = z1[1];     
+1399   4            }       
+1400   3            posx=NMEA_Comma_Pos(p1,2);                //»ùÕ¾±êÊ¶
+1401   3            if(posx!=0XFF)
+1402   3            {
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 24  
+
+1403   4              NMEA_StrBuf(p1+posx,&dx);             
+1404   4              Module.StationAdd[8]  = z1[0];
+1405   4              Module.StationAdd[9]  = z1[1];
+1406   4              Module.StationAdd[10] = z1[2];
+1407   4              Module.StationAdd[11] = z1[3];      
+1408   4            }       
+1409   3            posx=NMEA_Comma_Pos(p1,3);                //ÖÕ¶Ë±êÊ¶ºÅ
+1410   3            if(posx!=0XFF)
+1411   3            {
+1412   4              NMEA_StrBuf(p1+posx,&dx);             
+1413   4              Module.StationAdd[12] = z1[0];
+1414   4              Module.StationAdd[13] = z1[1];
+1415   4              Module.StationAdd[14] = z1[2];
+1416   4              Module.StationAdd[15] = z1[3];      
+1417   4            }       
+1418   3          }
+1419   2        }
+1420   1        if(strstr(Uart2_Temp,"MIPDATA")==NULL)  //Ñ¡ÔñÊÇ·ñÇå³ý»º´æ
+1421   1            CLR_Buf2(); 
+1422   1        return res;
+1423   1      }
+1424          
+1425          void GPS_ADDR(void)
+1426          {
+1427   1        u8 i;
+1428   1        
+1429   1        *Buffer        =   '*';    //Ö¡Í·
+1430   1        *(Buffer+1)    =   'M';
+1431   1        *(Buffer+2)    =   'G';
+1432   1        *(Buffer+3)    =   '2';    
+1433   1        *(Buffer+4)    =   '0';  
+1434   1        *(Buffer+5)    =   '0';    //»Ø¸´×´Ì¬ ²»ÐèÒª·þÎñÆ÷»Ø¸´
+1435   1      
+1436   1        for(i=0;i<15;i++)     
+1437   1        { 
+1438   2          *(Buffer+6+i) = Module.IMEI[i];  //6-15 IMEIºÅÂë
+1439   2        }
+1440   1        
+1441   1        *(Buffer+21)   =   ',';
+1442   1        *(Buffer+22)   =   'B';           //¶¨Ê±»Ø´«µÄ¶¨Î»ÐÅÏ¢
+1443   1        
+1444   1        *(Buffer+23)   =   'A';           //¶¨Î»Êý¾Ý
+1445   1        *(Buffer+24)   =   '&';
+1446   1        *(Buffer+25)   =   'A';
+1447   1        
+1448   1        *(Buffer+26)   =   Time.hour/10 + '0' ;              //12:42:16
+1449   1        *(Buffer+27)   =   Time.hour%10 + '0' ;              //Ê±
+1450   1        *(Buffer+28)   =   Time.min/10 + '0'  ;
+1451   1        *(Buffer+29)   =   Time.min%10 + '0'  ;              //·Ö
+1452   1        *(Buffer+30)   =   Time.sec/10 + '0'  ;
+1453   1        *(Buffer+31)   =   Time.sec%10 + '0'  ;               //Ãë
+1454   1        
+1455   1        *(Buffer+32)   =   gpsx.latitude[0];               //Î³¶È
+1456   1        *(Buffer+33)   =   gpsx.latitude[1];              
+1457   1        *(Buffer+34)   =   gpsx.latitude[2];              
+1458   1        *(Buffer+35)   =   gpsx.latitude[3];              
+1459   1        *(Buffer+36)   =   gpsx.latitude[4];              
+1460   1        *(Buffer+37)   =   gpsx.latitude[5];              
+1461   1        *(Buffer+38)   =   gpsx.latitude[6];              
+1462   1        *(Buffer+39)   =   gpsx.latitude[7];              
+1463   1        
+1464   1        *(Buffer+40)   =   gpsx.longitude[0];       //¾­¶È
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 25  
+
+1465   1        *(Buffer+41)   =   gpsx.longitude[1];              
+1466   1        *(Buffer+42)   =   gpsx.longitude[2];              
+1467   1        *(Buffer+43)   =   gpsx.longitude[3];              
+1468   1        *(Buffer+44)   =   gpsx.longitude[4];              
+1469   1        *(Buffer+45)   =   gpsx.longitude[5];              
+1470   1        *(Buffer+46)   =   gpsx.longitude[6];              
+1471   1        *(Buffer+47)   =   gpsx.longitude[7];              
+1472   1        *(Buffer+48)   =   gpsx.longitude[8];              
+1473   1        
+1474   1        
+1475   1        *(Buffer+49)   =   gpsx.shemi[0];          //¶¨Î»ÐÅÏ¢±êÖ¾Î»
+1476   1        
+1477   1        *(Buffer+50)   =   '0';//gpsx.speed[1] ;            //ËÙ¶È
+1478   1        *(Buffer+51)   =   '0';//gpsx.speed[2] ;           
+1479   1         
+1480   1        *(Buffer+52)   =   '0';           //·½Ïò
+1481   1        *(Buffer+53)   =   '0'; 
+1482   1        
+1483   1        *(Buffer+54)   =   Time.day/10 + '0' ;               //ÈÕ   09 11 17
+1484   1        *(Buffer+55)   =   Time.day%10 + '0'  ;
+1485   1        *(Buffer+56)   =   Time.month/10 + '0' ;               //ÔÂ
+1486   1        *(Buffer+57)   =   Time.month%10 + '0';
+1487   1        *(Buffer+58)   =   (Time.year%100)/10 + '0';               //Äê
+1488   1        *(Buffer+59)   =   Time.year%10 + '0'  ;
+1489   1        
+1490   1        if(Second_AT_Command1("AT+CCED=0,1","CCED: ",0,2,1) == 1) //ÕÒbuµ½»ùÕ¾¶¨Î»
+1491   1        {
+1492   2          *(Buffer+60)   =  '&';      //±¨¾¯
+1493   2          *(Buffer+61)   =  'B';
+1494   2          *(Buffer+62)   =  '0';
+1495   2          *(Buffer+63)   =  '0';
+1496   2          *(Buffer+64)   =  '0';
+1497   2          *(Buffer+65)   =  '0';
+1498   2          *(Buffer+66)   =  '0';
+1499   2          *(Buffer+67)   =  '0';
+1500   2          *(Buffer+68)   =  '0';
+1501   2          *(Buffer+69)   =  '0';
+1502   2          *(Buffer+70)   =  '0';
+1503   2          *(Buffer+71)   =  '0';
+1504   2          
+1505   2          *(Buffer+72)   =  '&';     
+1506   2          *(Buffer+73)   =  'W';
+1507   2          *(Buffer+74)   =  Module.alarm[10] + '0';
+1508   2          *(Buffer+75)   =  Module.alarm[11] + '0';
+1509   2          
+1510   2          *(Buffer+76)   =  '&';        
+1511   2          *(Buffer+77)   =  'G';     
+1512   2          *(Buffer+78)   =  '0';
+1513   2          *(Buffer+79)   =  '0';
+1514   2          *(Buffer+80)   =  '0';
+1515   2          *(Buffer+81)   =  '0';
+1516   2          *(Buffer+82)   =  '0';
+1517   2          *(Buffer+83)   =  '0';
+1518   2          
+1519   2          *(Buffer+84)   =  '&';    
+1520   2          *(Buffer+85)   =  'M';    
+1521   2          *(Buffer+86)   =  Module.DianLiang[0];
+1522   2          *(Buffer+87)   =  Module.DianLiang[1];
+1523   2          *(Buffer+88)   =  Module.DianLiang[2]; 
+1524   2          
+1525   2          *(Buffer+89)   =  '&';
+1526   2          *(Buffer+90)   =  'N';
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 26  
+
+1527   2          *(Buffer+91)   =  Module.CSQ[0];  //GSMÐÅºÅÇ¿¶È
+1528   2          *(Buffer+92)   =  Module.CSQ[1];
+1529   2          
+1530   2          *(Buffer+93)   =  '&';
+1531   2          *(Buffer+94)   =  'O';
+1532   2          *(Buffer+95)   =  gpsx.posslnum[0];
+1533   2          *(Buffer+96)   =  gpsx.posslnum[1];   
+1534   2          *(Buffer+97)   =  '0';
+1535   2          *(Buffer+98)   =  '0';
+1536   2          
+1537   2          *(Buffer+99)   =  '&';
+1538   2          *(Buffer+100)  =  'T';
+1539   2          *(Buffer+101)   =  (Module.serNum/1000) + '0';
+1540   2          *(Buffer+102)   =  (Module.serNum/100)%10 + '0';
+1541   2          *(Buffer+103)   =  (Module.serNum/10)%10 + '0';
+1542   2          *(Buffer+104)   =  (Module.serNum)%10 + '0';
+1543   2          
+1544   2          *(Buffer+105)   =  '#';    //Ö¡Î²
+1545   2           Second_AT_Command1("AT+MIPSEND=1,106",">",0,1,1);
+1546   2           //UART2_SendString("AT+MIPSEND=1,106");
+1547   2           UART2_Send_Len(Buffer,106);                   
+1548   2           UART2_SendData(0X1A);      //Æô¶¯·¢ËÍÊý¾Ý
+1549   2         }
+1550   1        else
+1551   1        {
+1552   2          GetStationAdd();  //»ñÈ¡»ùÕ¾µØÖ·
+1553   2          *(Buffer+60)   =   '&';
+1554   2          *(Buffer+61)   =   'P';
+1555   2      
+1556   2          *(Buffer+62)   =   Module.StationAdd[0];
+1557   2          *(Buffer+63)   =   Module.StationAdd[1];
+1558   2          *(Buffer+64)   =   Module.StationAdd[2];
+1559   2          *(Buffer+65)   =   Module.StationAdd[3];
+1560   2          *(Buffer+66)   =   Module.StationAdd[4];
+1561   2          *(Buffer+67)   =   Module.StationAdd[5];
+1562   2          *(Buffer+68)   =   Module.StationAdd[6];
+1563   2          *(Buffer+69)   =   Module.StationAdd[7];
+1564   2          *(Buffer+70)   =   Module.StationAdd[8];
+1565   2          *(Buffer+71)   =   Module.StationAdd[9];
+1566   2          *(Buffer+72)   =   Module.StationAdd[10];
+1567   2          *(Buffer+73)   =   Module.StationAdd[11];
+1568   2          *(Buffer+74)   =   Module.StationAdd[12];
+1569   2          *(Buffer+75)   =   Module.StationAdd[13];
+1570   2          *(Buffer+76)   =   Module.StationAdd[14];
+1571   2          *(Buffer+77)   =   Module.StationAdd[15];
+1572   2          *(Buffer+78)   =  '&';      //±¨¾¯
+1573   2          *(Buffer+79)   =  'B';
+1574   2          *(Buffer+80)   =  '0';
+1575   2          *(Buffer+81)   =  '0';
+1576   2          *(Buffer+82)   =  '0';
+1577   2          *(Buffer+83)   =  '0';
+1578   2          *(Buffer+84)   =  '0';
+1579   2          *(Buffer+85)   =  '0';
+1580   2          *(Buffer+86)   =  '0';
+1581   2          *(Buffer+87)   =  '0';
+1582   2          *(Buffer+88)   =  '0';
+1583   2          *(Buffer+89)   =  '0';
+1584   2          
+1585   2          *(Buffer+90)   =  '&';     
+1586   2          *(Buffer+91)   =  'W';
+1587   2          *(Buffer+92)   =  Module.alarm[10] + '0';
+1588   2          *(Buffer+93)   =  Module.alarm[11] + '0';
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 27  
+
+1589   2          
+1590   2          *(Buffer+94)   =  '&';        
+1591   2          *(Buffer+95)   =  'G';     
+1592   2          *(Buffer+96)   =  '0';
+1593   2          *(Buffer+97)   =  '0';
+1594   2          *(Buffer+98)   =  '0';
+1595   2          *(Buffer+99)   =  '0';
+1596   2          *(Buffer+100)   =  '0';
+1597   2          *(Buffer+101)   =  '0';
+1598   2          
+1599   2          *(Buffer+102)   =  '&';    
+1600   2          *(Buffer+103)   =  'M';    
+1601   2          *(Buffer+104)   =  Module.DianLiang[0];
+1602   2          *(Buffer+105)   =  Module.DianLiang[1];
+1603   2          *(Buffer+106)   =  Module.DianLiang[2]; 
+1604   2          
+1605   2          *(Buffer+107)   =  '&';
+1606   2          *(Buffer+108)   =  'N';
+1607   2          *(Buffer+109)   =  Module.CSQ[0];  //GSMÐÅºÅÇ¿¶È
+1608   2          *(Buffer+110)   =  Module.CSQ[1];
+1609   2          
+1610   2          *(Buffer+111)   =  '&';
+1611   2          *(Buffer+112)   =  'O';
+1612   2          *(Buffer+113)   =  gpsx.posslnum[0];
+1613   2          *(Buffer+114)   =  gpsx.posslnum[1];   
+1614   2          *(Buffer+115)   =  '0';
+1615   2          *(Buffer+116)   =  '0';
+1616   2          
+1617   2          *(Buffer+117)   =  '&';
+1618   2          *(Buffer+118)  =  'T';
+1619   2          *(Buffer+119)   =  (Module.serNum/1000) + '0';
+1620   2          *(Buffer+120)   =  (Module.serNum/100)%10 + '0';
+1621   2          *(Buffer+121)   =  (Module.serNum/10)%10 + '0';
+1622   2          *(Buffer+122)   =  (Module.serNum)%10 + '0';
+1623   2          
+1624   2          *(Buffer+123)   =  '#';    //Ö¡Î²
+1625   2           Second_AT_Command1("AT+MIPSEND=1,124",">",0,1,1);
+1626   2           //UART2_SendString("AT+MIPSEND=1,124");
+1627   2           UART2_Send_Len(Buffer,124);                   
+1628   2           UART2_SendData(0X1A);      //Æô¶¯·¢ËÍÊý¾Ý
+1629   2        }
+1630   1         //delay_ms(1200);
+1631   1         Module.serNum ++;          //·¢ÍêÒ»Ö¡ÐòÁÐºÅ+1 
+1632   1         Heartbeat = 0;
+1633   1         //CLR_Buf2();
+1634   1      }
+1635          
+1636          void BaseStationADDR(void)
+1637          {
+1638   1        u8 i;
+1639   1        *Buffer        =   '*';    //Ö¡Í·
+1640   1        *(Buffer+1)    =   'M';
+1641   1        *(Buffer+2)    =   'G';
+1642   1        *(Buffer+3)    =   '2';    
+1643   1        *(Buffer+4)    =   '0';  
+1644   1        *(Buffer+5)    =   '0';    //»Ø¸´×´Ì¬ ²»ÐèÒª·þÎñÆ÷»Ø¸´
+1645   1      
+1646   1        for(i=0;i<15;i++)     
+1647   1        { 
+1648   2          *(Buffer+6+i) = Module.IMEI[i];  //6-15 IMEIºÅÂë
+1649   2        }
+1650   1      
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 28  
+
+1651   1        *(Buffer+21)   =   ',';
+1652   1        *(Buffer+22)   =   'B';           //¶¨Ê±»Ø´«µÄ¶¨Î»ÐÅÏ¢
+1653   1      
+1654   1        *(Buffer+23)   =   'A';           //¶¨Î»Êý¾Ý
+1655   1        *(Buffer+24)   =   '&';
+1656   1        *(Buffer+25)   =   'P';
+1657   1      
+1658   1        *(Buffer+26)   =   Module.StationAdd[0];
+1659   1        *(Buffer+27)   =   Module.StationAdd[1];
+1660   1        *(Buffer+28)   =   Module.StationAdd[2];
+1661   1        *(Buffer+29)   =   Module.StationAdd[3];
+1662   1        *(Buffer+30)   =   Module.StationAdd[4];
+1663   1        *(Buffer+31)   =   Module.StationAdd[5];
+1664   1        *(Buffer+32)   =   Module.StationAdd[6];
+1665   1        *(Buffer+33)   =   Module.StationAdd[7];
+1666   1        *(Buffer+34)   =   Module.StationAdd[8];
+1667   1        *(Buffer+35)   =   Module.StationAdd[9];
+1668   1        *(Buffer+36)   =   Module.StationAdd[10];
+1669   1        *(Buffer+37)   =   Module.StationAdd[11];
+1670   1        *(Buffer+38)   =   Module.StationAdd[12];
+1671   1        *(Buffer+39)   =   Module.StationAdd[13];
+1672   1        *(Buffer+40)   =   Module.StationAdd[14];
+1673   1        *(Buffer+41)   =   Module.StationAdd[15];
+1674   1      
+1675   1        *(Buffer+42)   =   '&';
+1676   1        *(Buffer+43)   =   'E';
+1677   1        *(Buffer+44)   =   (Time.year%100)/10 + '0';
+1678   1        *(Buffer+45)   =   Time.year%10 + '0';
+1679   1        *(Buffer+46)   =   Time.month/10 + '0';
+1680   1        *(Buffer+47)   =   Time.month%10 + '0';
+1681   1        *(Buffer+48)   =   Time.day/10 + '0';
+1682   1        *(Buffer+49)   =   Time.day%10 + '0';
+1683   1        *(Buffer+50)   =   Time.hour/10 + '0';
+1684   1        *(Buffer+51)   =   Time.hour%10 + '0';
+1685   1        *(Buffer+52)   =   Time.min/10 + '0';
+1686   1        *(Buffer+53)   =   Time.min%10 + '0';
+1687   1        *(Buffer+54)   =   Time.sec/10 + '0';
+1688   1        *(Buffer+55)   =   Time.sec%10 + '0';
+1689   1            
+1690   1        *(Buffer+56)   =  '&';      //±¨¾¯
+1691   1        *(Buffer+57)   =  'B';
+1692   1        *(Buffer+58)   =  '0';
+1693   1        *(Buffer+59)   =  '0';
+1694   1        *(Buffer+60)   =  '0';
+1695   1        *(Buffer+61)   =  '0';
+1696   1        *(Buffer+62)   =  '0';
+1697   1        *(Buffer+63)   =  '0';
+1698   1        *(Buffer+64)   =  '0';
+1699   1        *(Buffer+65)   =  '0';
+1700   1        *(Buffer+66)   =  '0';
+1701   1        *(Buffer+67)   =  '0';
+1702   1      
+1703   1        *(Buffer+68)   =  '&';     
+1704   1        *(Buffer+69)   =  'W';
+1705   1        *(Buffer+70)   =  Module.alarm[10] + '0';
+1706   1        *(Buffer+71)   =  Module.alarm[11] + '0';
+1707   1      
+1708   1        *(Buffer+72)   =  '&';        
+1709   1        *(Buffer+73)   =  'G';     
+1710   1        *(Buffer+74)   =  '0';
+1711   1        *(Buffer+75)   =  '0';
+1712   1        *(Buffer+76)   =  '0';
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 29  
+
+1713   1        *(Buffer+77)   =  '0';
+1714   1        *(Buffer+78)   =  '0';
+1715   1        *(Buffer+79)   =  '0';
+1716   1      
+1717   1        *(Buffer+80)   =  '&';    
+1718   1        *(Buffer+81)   =  'M';    
+1719   1        *(Buffer+82)   =  Module.DianLiang[0];
+1720   1        *(Buffer+83)   =  Module.DianLiang[1];
+1721   1        *(Buffer+84)   =  Module.DianLiang[2]; 
+1722   1      
+1723   1        *(Buffer+85)   =  '&';
+1724   1        *(Buffer+86)   =  'N';
+1725   1        *(Buffer+87)   =  Module.CSQ[0];  //GSMÐÅºÅÇ¿¶È
+1726   1        *(Buffer+88)   =  Module.CSQ[1];
+1727   1      
+1728   1        *(Buffer+89)   =  '&';
+1729   1        *(Buffer+90)   =  'O';
+1730   1        *(Buffer+91)   =  '0';
+1731   1        *(Buffer+92)   =  '0';   
+1732   1        *(Buffer+93)   =  '0';
+1733   1        *(Buffer+94)   =  '0';
+1734   1      
+1735   1        *(Buffer+95)   =  '&';
+1736   1        *(Buffer+96)  =  'T';
+1737   1        *(Buffer+97)   =  (Module.serNum/1000) + '0';
+1738   1        *(Buffer+98)   =  (Module.serNum/100)%10 + '0';
+1739   1        *(Buffer+99)   =  (Module.serNum/10)%10 + '0';
+1740   1        *(Buffer+100)   =  (Module.serNum)%10 + '0';
+1741   1      
+1742   1        *(Buffer+101)   =  '#';    //Ö¡Î²
+1743   1        
+1744   1         Second_AT_Command1("AT+MIPSEND=1,102",">",0,1,1);
+1745   1         UART2_Send_Len(Buffer,102);                   
+1746   1         UART2_SendData(0X1A);      //Æô¶¯·¢ËÍÊý¾Ý
+1747   1         
+1748   1         Module.serNum ++;          //·¢ÍêÒ»Ö¡ÐòÁÐºÅ+1 
+1749   1         Heartbeat = 0;
+1750   1      }
+1751          
+1752          void Send_SimNum(void)
+1753          {
+1754   1        u8 k;
+1755   1        *Buffer        =   '*';    //Ö¡Í·
+1756   1        *(Buffer+1)    =   'M';
+1757   1        *(Buffer+2)    =   'G';
+1758   1        *(Buffer+3)    =   '2';    
+1759   1        *(Buffer+4)    =   '0';  
+1760   1        *(Buffer+5)    =   '1';    //»Ø¸´×´Ì¬ ²»ÐèÒª·þÎñÆ÷»Ø¸´
+1761   1      
+1762   1        for(k=0;k<15;k++)     
+1763   1        { 
+1764   2          *(Buffer+6+k) = Module.IMEI[k];  //6-15 IMEIºÅÂë
+1765   2        }
+1766   1      
+1767   1        *(Buffer+21)   =   ',';
+1768   1        *(Buffer+22)   =   'A';           //¶¨Ê±»Ø´«µÄ¶¨Î»ÐÅÏ¢
+1769   1      
+1770   1        *(Buffer+23)   =   'W';           //¶¨Î»Êý¾Ý
+1771   1        *(Buffer+24)   =   'h';
+1772   1        *(Buffer+25)   =   ',';
+1773   1       
+1774   1        for(k=0;k<20;k++)
+C51 COMPILER V9.52.0.0   A8900                                                             12/19/2017 08:58:30 PAGE 30  
+
+1775   1        {
+1776   2          *(Buffer+26+k) = Module.CCID[k];
+1777   2        }
+1778   1        *(Buffer+46)   =  '&';
+1779   1        *(Buffer+47)   =  'T';
+1780   1        *(Buffer+48)   =  (Module.serNum/1000) + '0';
+1781   1        *(Buffer+49)   =  (Module.serNum/100)%10 + '0';
+1782   1        *(Buffer+50)   =  (Module.serNum/10)%10 + '0';
+1783   1        *(Buffer+51)   =  (Module.serNum)%10 + '0';
+1784   1      
+1785   1        *(Buffer+52)   =  '#';    //Ö¡Î²
+1786   1        //UART2_SendString("AT+MIPSEND=1,53");
+1787   1         Second_AT_Command1("AT+MIPSEND=1,53",">",0,1,1);
+1788   1         UART2_Send_Len(Buffer,53);                  
+1789   1         UART2_SendData(0X1A);      //Æô¶¯·¢ËÍÊý¾Ý
+1790   1         
+1791   1         //delay_ms(1200);
+1792   1         Module.serNum ++;          //·¢ÍêÒ»Ö¡ÐòÁÐºÅ+1 
+1793   1         Heartbeat = 0;
+1794   1         //CLR_Buf2();
+1795   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   7916    ----
+   CONSTANT SIZE    =    507    ----
+   XDATA SIZE       =    441      99
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      1    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

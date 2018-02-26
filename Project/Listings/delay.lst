@@ -1,0 +1,45 @@
+C51 COMPILER V9.52.0.0   DELAY                                                             12/19/2017 08:58:30 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE DELAY
+OBJECT MODULE PLACED IN .\Output\delay.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Hardware\Delay\delay.c LARGE OPTIMIZE(9,SIZE) BROWSE INCDIR(..\Hardwa
+                    -re\A8900;..\Hardware\Delay;..\Hardware\EEPROM;..\Hardware\GPIO;..\Hardware\GPS;..\Hardware\MoveData;..\Hardware\Timer;..
+                    -\Hardware\UART;..\User;..\Project) DEBUG OBJECTEXTEND PRINT(.\Listings\delay.lst) TABS(2) OBJECT(.\Output\delay.obj)
+
+line level    source
+
+   1          #include  "delay.h"
+   2          
+   3          //========================================================================
+   4          // 函数: void  delay_ms
+   5          // 描述: 延时函数。
+   6          // 参数: ms,要延时的ms数, 这里只支持1~65536ms. 自动适应主时钟.
+   7          // 返回: none.
+   8          // 版本: VER1.1
+   9          // 日期: 2017-10-13
+  10          // 备注: 
+  11          //========================================================================
+  12          void delay_ms(u16 ms)             //已用示波器校准过
+  13          {
+  14   1         u16 i;
+  15   1         do{
+  16   2            i = (u16)(MAIN_Fosc /10000);
+  17   2            while(--i)  ; 
+  18   2           }while(--ms);
+  19   1      }
+  20          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     23    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

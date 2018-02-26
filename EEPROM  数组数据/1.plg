@@ -1,0 +1,18 @@
+<html>
+<body>
+<pre>
+<h1>礦ision Build Log</h1>
+<h2>Project:</h2>
+C:\Users\chensheng\Desktop\trunk\EEPROM  数组数据\1.uvproj
+Project File Date:  12/04/2017
+
+<h2>Output:</h2>
+Rebuild target '1'
+compiling 1.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?CO?1
+*** WARNING L10: CANNOT DETERMINE ROOT SEGMENT
+Program Size: data=0.0 xdata=0 code=50
+creating hex file from "1"...
+"1" - 0 Error(s), 2 Warning(s).

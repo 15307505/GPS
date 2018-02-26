@@ -1,0 +1,11 @@
+".\Output\main.obj",
+".\Output\A8900.obj",
+".\Output\delay.obj",
+".\Output\eeprom.obj",
+".\Output\GPIO.obj",
+".\Output\MoveData.obj",
+".\Output\Time.obj",
+".\Output\uart.obj",
+".\Output\GPS.obj" 
+TO ".\Output\51A8900" 
+PRINT(".\Listings\51A8900.m51") RAMSIZE(256) 

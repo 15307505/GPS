@@ -1,0 +1,230 @@
+C51 COMPILER V9.52.0.0   UART                                                              12/19/2017 08:58:31 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE UART
+OBJECT MODULE PLACED IN .\Output\uart.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Hardware\UART\uart.c LARGE OPTIMIZE(9,SIZE) BROWSE INCDIR(..\Hardware
+                    -\A8900;..\Hardware\Delay;..\Hardware\EEPROM;..\Hardware\GPIO;..\Hardware\GPS;..\Hardware\MoveData;..\Hardware\Timer;..\H
+                    -ardware\UART;..\User;..\Project) DEBUG OBJECTEXTEND PRINT(.\Listings\uart.lst) TABS(2) OBJECT(.\Output\uart.obj)
+
+line level    source
+
+   1          #include  "uart.h"
+   2          #include  "GPIO.h"
+   3          #include  "user_define.h"
+   4          
+   5          u16  First_Int = 0; //串口2接收数据计数
+   6          
+   7          //u8 Uart1_Buf[Buf1_Max];
+   8          u8 Uart2_Buf[Buf2_Max];   //串口接受缓存组
+   9          u8 Uart2_Temp[Buf2_Max];  //缓存数据组
+  10          u8 UART2_RXD_FLAG;
+  11          u8 Uart2_Temp_Flag = 0;       //数据处理完毕标志位  表示可以清楚数组数据
+  12          u8 Uart2_RXD_Chaoshi = 0;
+  13          
+  14          void Uart1Init(void)    //115200bps@11.0592MHz
+  15          {
+  16   1        SCON = 0x50;    //8位数据，可变波特率
+  17   1        AUXR |= 0x40;   //1T模式
+  18   1        AUXR &= 0xFE;   //选择定时器1为波特率发生器
+  19   1        TMOD &= 0x0F;   //设定定时器1为16位自动重载
+  20   1        TL1 = 0xE8;     //设定定时器初值
+  21   1        TH1 = 0xFF;     //设定定时器初值
+  22   1        ET1 = 0;        //禁止定时器1中断
+  23   1        TR1 = 1;        //启动定时器1
+  24   1        ES = 1;         //使能串口1中断
+  25   1      }
+  26          
+  27          void Uart2Init(void)    //115200bps@11.0592MHz
+  28          {
+  29   1        GPIO_InitTypeDef  GPIO_InitStructure;
+  30   1        GPIO_InitStructure.Pin  = GPIO_Pin_0;        
+  31   1        GPIO_InitStructure.Mode = GPIO_HighZ;      
+  32   1        GPIO_Inilize(GPIO_P1,&GPIO_InitStructure);
+  33   1        
+  34   1        S2CON = 0x50;   //8位数据，可变波特率
+  35   1        AUXR |= 0x04;   //1T模式
+  36   1        T2L = 0xE8;     //设定定时器初值
+  37   1        T2H = 0xFF;     //设定定时器初值
+  38   1        AUXR |= 0x10;   //启动定时器2
+  39   1        IE2  |= 0x01;   //使能串口2中断
+  40   1      }
+  41          
+  42          //----------------------------
+  43          //UART1 发送串口数据
+  44          //-----------------------------
+  45          void UART1_SendData(u8 dat)
+  46          {
+  47   1        ES=0;         //关串口中断
+  48   1        SBUF=dat;     
+  49   1        while(TI!=1); //等待发送成功
+  50   1        TI=0;         //清除发送中断标志
+  51   1        ES=1;         //开串口中断
+  52   1      }
+  53          /*----------------------------
+C51 COMPILER V9.52.0.0   UART                                                              12/19/2017 08:58:31 PAGE 2   
+
+  54          UART1 发送字符串
+  55          -----------------------------
+  56          void UART1_SendString(char *s)
+  57          {
+  58            while(*s)//检测字符串结束符
+  59            {
+  60              UART1_SendData(*s++);//发送当前字符
+  61            }
+  62          }
+  63          /*----------------------------
+  64          UART1 发送多位串口数据
+  65          -----------------------------
+  66          ////void UART1_Send_Len(char *s,u8 len)
+  67          {
+  68            if(s!=0)
+  69            while(len)             //检测字符串结束符
+  70            {
+  71              UART1_SendData(*s++);//发送当前字符
+  72              len--;
+  73            }
+  74          }
+  75          
+  76          
+  77          /*----------------------------
+  78          UART2 发送多位串口数据
+  79          -----------------------------*/
+  80          void UART2_Send_Len(char *s,u8 len)
+  81          {
+  82   1        if(s!=0)
+  83   1        while(len)             //检测字符串结束符
+  84   1        {
+  85   2          UART2_SendData(*s++);//发送当前字符
+  86   2          len--;
+  87   2        }
+  88   1      }
+  89          
+  90          /*----------------------------
+  91          UART2 发送串口数据
+  92          -----------------------------*/
+  93          void UART2_SendData(u8 dat)
+  94          {
+  95   1        IE2 &= ~0x01;               //关串口中断
+  96   1        S2BUF=dat;      
+  97   1        while((S2CON&S2TI)!=S2TI);  //等待发送成功
+  98   1        S2CON &= ~S2TI;             //清除发送中断标志
+  99   1        IE2 |= 0x01;                  //开串口中断
+ 100   1      }
+ 101          /*----------------------------
+ 102          UART2 发送字符串
+ 103          -----------------------------*/
+ 104          void UART2_SendString(char *s)
+ 105          {
+ 106   1        while(*s)                  //检测字符串结束符
+ 107   1        {
+ 108   2          UART2_SendData(*s++);    //发送当前字符
+ 109   2        }
+ 110   1      }
+ 111          
+ 112          
+ 113          /*******************************************************************************
+ 114          * 函数名 : Uart1 
+ 115          * 描述   : 串口1中断服务入口函数
+C51 COMPILER V9.52.0.0   UART                                                              12/19/2017 08:58:31 PAGE 3   
+
+ 116          * 输入   : 
+ 117          * 输出   : 
+ 118          * 返回   : 
+ 119          * 注意   : 
+ 120          ******************************************************************************
+ 121          /*void Uart1() interrupt 4
+ 122          {
+ 123              if (RI)
+ 124              {
+ 125                  RI = 0;                 //清除RI位
+ 126              }
+ 127              if (TI)
+ 128              {
+ 129                  TI = 0;                 //清除TI位
+ 130              }
+ 131          }
+ 132          */
+ 133          /*******************************************************************************
+ 134          * 函数名 : Uart2
+ 135          * 描述   : 串口2中断服务入口函数
+ 136          * 输入   : 
+ 137          * 输出   : 
+ 138          * 返回   : 
+ 139          * 注意   : 
+ 140          *******************************************************************************/
+ 141          void Uart2() interrupt 8
+ 142          {
+ 143   1        IE2  &= ~0x01;    //关闭串口2中断
+ 144   1        
+ 145   1        Uart2_RXD_Chaoshi = 21;
+ 146   1        
+ 147   1        if (S2CON & S2RI)
+ 148   1        {
+ 149   2          S2CON &= ~S2RI;                   //清除S2RI位
+ 150   2          Uart2_Buf[First_Int] = S2BUF;     //将接收到的字符串存到缓存中
+ 151   2          First_Int++;                      //缓存指针向后移动
+ 152   2          if(First_Int > Buf2_Max)          //如果缓存满,将缓存指针指向缓存的首地址
+ 153   2          {
+ 154   3            First_Int = 0;
+ 155   3          }
+ 156   2        }
+ 157   1        if (S2CON & S2TI)
+ 158   1        {
+ 159   2          S2CON &= ~S2TI;         //清除S2TI位
+ 160   2        }
+ 161   1        IE2  |= 0x01;             //使能串口2中断
+ 162   1      }
+ 163          
+ 164          /*******************************************************************************
+ 165          * 函数名 : CLR_Buf2
+ 166          * 描述   : 清除串口2缓存数据
+ 167          * 输入   : 
+ 168          * 输出   : 
+ 169          * 返回   : 
+ 170          * 注意   : 
+ 171          *******************************************************************************/
+ 172          void CLR_Buf2(void)
+ 173          {
+ 174   1        u16 k;
+ 175   1        IE2  &= ~0x01;    //关闭串口2中断
+ 176   1        for(k=0;k<Buf2_Max;k++)      //将缓存内容清零
+ 177   1        {
+C51 COMPILER V9.52.0.0   UART                                                              12/19/2017 08:58:31 PAGE 4   
+
+ 178   2          Uart2_Buf[k] = 0x00;
+ 179   2        }
+ 180   1        UART2_RXD_FLAG=0; 
+ 181   1        IE2  |= 0x01;     //使能串口2中断
+ 182   1      }
+ 183          
+ 184          void Buf2Temp(void)   //Buf To Temp
+ 185          {
+ 186   1        //if(strstr(Uart2_Buf,"MIPDATA")==NULL)  //选择是否清除缓存
+ 187   1        //    CLR_Buf2();  
+ 188   1        //if(Uart2_Temp_Flag == 1)  //表示数据已经处理完毕 可以转移数据过来
+ 189   1        {
+ 190   2          u16 i;
+ 191   2          IE2  &= ~0x01;    //关闭串口2中断
+ 192   2          for(i=0;i<Buf2_Max;i++)
+ 193   2          {
+ 194   3            Uart2_Temp[i] = Uart2_Buf[i];
+ 195   3          }
+ 196   2          IE2  |= 0x01;     //使能串口2中断
+ 197   2          //Uart2_Temp_Flag = 0;
+ 198   2        }
+ 199   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    371    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   1325      11
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

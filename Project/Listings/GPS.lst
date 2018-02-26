@@ -1,0 +1,306 @@
+C51 COMPILER V9.52.0.0   GPS                                                               12/19/2017 08:58:31 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE GPS
+OBJECT MODULE PLACED IN .\Output\GPS.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Hardware\GPS\GPS.c LARGE OPTIMIZE(9,SIZE) BROWSE INCDIR(..\Hardware\A
+                    -8900;..\Hardware\Delay;..\Hardware\EEPROM;..\Hardware\GPIO;..\Hardware\GPS;..\Hardware\MoveData;..\Hardware\Timer;..\Har
+                    -dware\UART;..\User;..\Project) DEBUG OBJECTEXTEND PRINT(.\Listings\GPS.lst) TABS(2) OBJECT(.\Output\GPS.obj)
+
+line level    source
+
+   1          #include  "GPS.h"
+   2          #include  "string.h"
+   3          #include  "uart.h"
+   4          #include  "delay.h"
+   5          u8 z1[12],z2[6];
+   6          extern void Get_RTC(void);  //模拟RTC时钟
+   7          //从buf里面得到第cx个逗号所在的位置
+   8          //返回值:0~0XFE,代表逗号所在位置的偏移.
+   9          //       0XFF,代表不存在第cx个逗号                
+  10          u8 NMEA_Comma_Pos(u8 *buf,u8 cx)
+  11          {         
+  12   1        u8 *p=buf;
+  13   1        while(cx)
+  14   1        {    
+  15   2          if(*buf=='*'||*buf<' '||*buf>'z')return 0XFF;//遇到'*'或者非法字符,则不存在第cx个逗号
+  16   2          if(*buf==',')cx--;
+  17   2          buf++;
+  18   2        }
+  19   1        return buf-p;  
+  20   1      }
+  21          
+  22            
+  23          
+  24          //分析GPGGA信息
+  25          //gpsx:nmea信息结构体
+  26          //buf:接收到的GPS数据缓冲区首地址
+  27          void NMEA_GPGGA_Analysis(nmea_msg *gpsx,u8 *buf)
+  28          {
+  29   1        u8 *p1,dx;       
+  30   1        u8 posx;    
+  31   1        p1=(u8*)strstr((const char *)buf,"GPGGA");
+  32   1        gpsx->shemi[0] = 0x30;
+  33   1        posx=NMEA_Comma_Pos(p1,6);                //得到定位类型
+  34   1        if(posx!=0XFF)
+  35   1        {   
+  36   2          if(*(p1+posx) == '0')   //未定位
+  37   2          {
+  38   3            gpsx->shemi[0] |= 0x01;
+  39   3          }
+  40   2          else
+  41   2          {
+  42   3            gpsx->shemi[0] &= 0XFE;
+  43   3          }
+  44   2        } 
+  45   1        posx=NMEA_Comma_Pos(p1,7);                //得到用于定位的卫星数
+  46   1        if(posx!=0XFF)
+  47   1        {
+  48   2            NMEA_StrBuf(p1+posx,&dx);
+  49   2            gpsx->posslnum[0] = z1[0];
+  50   2            gpsx->posslnum[1] = z1[1];
+  51   2        } 
+  52   1        else
+  53   1       {
+C51 COMPILER V9.52.0.0   GPS                                                               12/19/2017 08:58:31 PAGE 2   
+
+  54   2            gpsx->posslnum[0] = '0';
+  55   2            gpsx->posslnum[1] = '0';
+  56   2       }  
+  57   1      }
+  58          
+  59          
+  60          //分析GPRMC信息
+  61          //gpsx:nmea信息结构体
+  62          //buf:接收到的GPS数据缓冲区首地址
+  63          void NMEA_GPRMC_Analysis(nmea_msg *gpsx,u8 *buf)
+  64          {
+  65   1        u8 *p1,dx;     
+  66   1        u8 posx;         
+  67   1        p1=(u8*)strstr((const char *)buf,"GPRMC");//"$GPRMC",经常有&和GPRMC分开的情况,故只判断GPRMC.
+  68   1        posx=NMEA_Comma_Pos(p1,1);                //得到UTC时间
+  69   1      
+  70   1        if(posx!=0XFF)
+  71   1        {
+  72   2          NMEA_StrBuf(p1+posx,&dx);              //得到UTC时间,去掉ms
+  73   2          
+  74   2          //gpsx->utc.hour[0] = z1[0];
+  75   2          //gpsx->utc.hour[1] = z1[1];
+  76   2          //gpsx->utc.min[0]  = z1[2];
+  77   2          //gpsx->utc.min[1]  = z1[3];
+  78   2          //gpsx->utc.sec[0]  = z1[4];
+  79   2          //gpsx->utc.sec[1]  = z1[5];
+  80   2          
+  81   2          Time.sec   =  (z1[4]-'0')*10  +  z1[5]  - '0';
+  82   2          Time.min   =  (z1[2]-'0')*10  +  z1[3]  - '0';
+  83   2          Time.hour  =  (z1[0]-'0')*10  +  z1[1]  - '0' + 8;
+  84   2          Get_RTC();
+  85   2        }  
+  86   1        posx=NMEA_Comma_Pos(p1,3);                //得到纬度
+  87   1        if(posx!=0XFF)
+  88   1        {
+  89   2          NMEA_StrBuf(p1+posx,&dx);
+  90   2          
+  91   2          gpsx->latitude[0] = z1[0];
+  92   2          gpsx->latitude[1] = z1[1];
+  93   2          gpsx->latitude[2] = z1[2];
+  94   2          gpsx->latitude[3] = z1[3];
+  95   2          
+  96   2          gpsx->latitude[4] = z2[0];
+  97   2          gpsx->latitude[5] = z2[1];
+  98   2          gpsx->latitude[6] = z2[2];
+  99   2          gpsx->latitude[7] = z2[3];
+ 100   2          gpsx->latitude[8] = z2[4];
+ 101   2        }
+ 102   1        else
+ 103   1        {
+ 104   2          gpsx->latitude[0] = '0';
+ 105   2          gpsx->latitude[1] = '0';
+ 106   2          gpsx->latitude[2] = '0';
+ 107   2          gpsx->latitude[3] = '0';
+ 108   2          
+ 109   2          gpsx->latitude[4] = '0';
+ 110   2          gpsx->latitude[5] = '0';
+ 111   2          gpsx->latitude[6] = '0';
+ 112   2          gpsx->latitude[7] = '0';
+ 113   2          gpsx->latitude[8] = '0';
+ 114   2        }
+ 115   1        posx=NMEA_Comma_Pos(p1,4);                //南纬还是北纬 
+C51 COMPILER V9.52.0.0   GPS                                                               12/19/2017 08:58:31 PAGE 3   
+
+ 116   1        if(posx!=0XFF)
+ 117   1        {
+ 118   2          if(*(p1+posx) == 'N')
+ 119   2          {
+ 120   3             gpsx->shemi[0] |= 0x02;           
+ 121   3          }     
+ 122   2          else
+ 123   2          {
+ 124   3             gpsx->shemi[0] &= 0xfd;
+ 125   3          }
+ 126   2        } 
+ 127   1        
+ 128   1        posx=NMEA_Comma_Pos(p1,5);                //得到经度
+ 129   1        if(posx!=0XFF)
+ 130   1        {               
+ 131   2          NMEA_StrBuf(p1+posx,&dx);
+ 132   2      
+ 133   2          gpsx->longitude[0] = z1[0];
+ 134   2          gpsx->longitude[1] = z1[1];
+ 135   2          gpsx->longitude[2] = z1[2];
+ 136   2          gpsx->longitude[3] = z1[3];
+ 137   2          gpsx->longitude[4] = z1[4];
+ 138   2          
+ 139   2          gpsx->longitude[5] = z2[0];
+ 140   2          gpsx->longitude[6] = z2[1];
+ 141   2          gpsx->longitude[7] = z2[2];
+ 142   2          gpsx->longitude[8] = z2[3];
+ 143   2          gpsx->longitude[9] = z2[4];
+ 144   2        }
+ 145   1        else
+ 146   1        {
+ 147   2          gpsx->longitude[0] = '0';
+ 148   2          gpsx->longitude[1] = '0';
+ 149   2          gpsx->longitude[2] = '0';
+ 150   2          gpsx->longitude[3] = '0';
+ 151   2          gpsx->longitude[4] = '0';
+ 152   2          
+ 153   2          gpsx->longitude[5] = '0';
+ 154   2          gpsx->longitude[6] = '0';
+ 155   2          gpsx->longitude[7] = '0';
+ 156   2          gpsx->longitude[8] = '0';
+ 157   2          gpsx->longitude[9] = '0';
+ 158   2        }
+ 159   1        posx=NMEA_Comma_Pos(p1,6);                //东经还是西经
+ 160   1        if(posx!=0XFF)
+ 161   1        {
+ 162   2          if(*(p1+posx) == 'E')
+ 163   2          {
+ 164   3             gpsx->shemi[0] |= 0x04;           
+ 165   3          }     
+ 166   2          else
+ 167   2          {
+ 168   3             gpsx->shemi[0] &= 0xfb;
+ 169   3          }
+ 170   2        }
+ 171   1      
+ 172   1        posx=NMEA_Comma_Pos(p1,9);                //得到UTC日期
+ 173   1        if(posx!=0XFF)
+ 174   1        {
+ 175   2          NMEA_StrBuf(p1+posx,&dx);               //得到UTC时间,去掉ms
+ 176   2          
+ 177   2          //gpsx->utc.date[0]  = z1[0];
+C51 COMPILER V9.52.0.0   GPS                                                               12/19/2017 08:58:31 PAGE 4   
+
+ 178   2          //gpsx->utc.date[1]  = z1[1];
+ 179   2          //gpsx->utc.month[0] = z1[2];
+ 180   2          //gpsx->utc.month[1] = z1[3];
+ 181   2          //gpsx->utc.year[0]  = z1[4];    
+ 182   2          //gpsx->utc.year[1]  = z1[5];
+ 183   2          
+ 184   2          Time.day   =  (z1[0]-'0')*10 +  z1[1] - '0';
+ 185   2          Time.month =  (z1[2]-'0')*10 +  z1[3] - '0';
+ 186   2          Time.year  =  2000 + (z1[4]-'0')*10 +  z1[5] - '0';
+ 187   2          //Get_RTC();
+ 188   2        } 
+ 189   1      }
+ 190          
+ 191          
+ 192          //分析GPVTG信息
+ 193          //gpsx:nmea信息结构体
+ 194          //buf:接收到的GPS数据缓冲区首地址
+ 195          /*
+ 196          void NMEA_GPVTG_Analysis(nmea_msg *gpsx,u8 *buf)
+ 197          {
+ 198            u8 *p1,dx;
+ 199            u8 posx;    
+ 200            p1=(u8*)strstr((const char *)buf,"$GPVTG");              
+ 201            posx=NMEA_Comma_Pos(p1,5);                //得到地面速率  节
+ 202            if(posx!=0XFF)                            //根据dx1数据长度来赋值
+ 203            {
+ 204              if(NMEA_StrBuf(p1+posx,&dx)==1)                //速度D0 D1 D2 . D3  三位整数  一位小数
+ 205              {gpsx->speed[0] = '0';    gpsx->speed[1] = '0';    gpsx->speed[2] = z1[0];  gpsx->speed[3] = z2[0];}    
+ 206              else if((NMEA_StrBuf(p1+posx,&dx)==2))
+ 207              {gpsx->speed[0] = '0';    gpsx->speed[1] = z1[0];  gpsx->speed[2] = z1[1];  gpsx->speed[3] = z2[0];}
+ 208              else if((NMEA_StrBuf(p1+posx,&dx)==3))
+ 209              {gpsx->speed[0] = z1[0];  gpsx->speed[1] = z1[1];  gpsx->speed[2] = z1[2];  gpsx->speed[3] = z2[0];}
+ 210              else
+ 211              {
+ 212                gpsx->speed[0] = '0';
+ 213                gpsx->speed[1] = '0';
+ 214                gpsx->speed[2] = '0';
+ 215              }
+ 216            }
+ 217          }  
+ 218          */
+ 219          
+ 220          //提取NMEA-0183信息
+ 221          //gpsx:nmea信息结构体
+ 222          //buf:接收到的GPS数据缓冲区首地址
+ 223          void GPS_Analysis(nmea_msg *gpsx,u8 *buf)
+ 224          {
+ 225   1        NMEA_GPGGA_Analysis(gpsx,buf);  //GPGGA解析 
+ 226   1        //NMEA_GPGSA_Analysis(gpsx,buf);  //GPGSA解析
+ 227   1        NMEA_GPRMC_Analysis(gpsx,buf);  //GPRMC解析
+ 228   1        //NMEA_GPVTG_Analysis(gpsx,buf);  //GPVTG解析
+ 229   1      }
+ 230          
+ 231          
+ 232          //buf:数字存储区  buf1:整数ASCII  buf2:小数ASCII
+ 233          //dx1:整数位数,返回给调用函数
+ 234          //dx2:小数点位数,返回给调用函数
+ 235          //返回值:转换后的数据存在BUF中
+ 236          u8 NMEA_StrBuf(u8 *buf,u8 *dx)
+ 237          {
+ 238   1        u8 *p=buf;
+ 239   1        u8 ilen=0,flen=0,i;
+C51 COMPILER V9.52.0.0   GPS                                                               12/19/2017 08:58:31 PAGE 5   
+
+ 240   1        u8 mask=0;
+ 241   1        
+ 242   1        while(1) //得到整数和小数的长度
+ 243   1        {
+ 244   2          if(*p=='-'){mask|=0X02;p++;}//是负数
+ 245   2          if(*p==','||(*p=='*'))break;//遇到结束了
+ 246   2          if(*p=='.'){mask|=0X01;p++;}//遇到小数点了
+ 247   2          //else if(*p>'9'||(*p<'0')) //有非法字符
+ 248   2          //{ 
+ 249   2          //  ilen=0;
+ 250   2          //  flen=0;
+ 251   2          //  break;
+ 252   2          //} 
+ 253   2          if(mask&0X01)flen++;
+ 254   2          else ilen++;
+ 255   2          p++;
+ 256   2        }
+ 257   1        if(mask&0X02)buf++; //去掉负号
+ 258   1        
+ 259   1        if(ilen>8)ilen=8; //最多取8位小数
+ 260   1        for(i=0;i<ilen;i++) //得到整数部分数据
+ 261   1        {  
+ 262   2          z1[i] = buf[i];
+ 263   2        }
+ 264   1        
+ 265   1        if(flen>5)flen=5; //最多取5位小数
+ 266   1        *dx=flen;     //小数点位数
+ 267   1        for(i=0;i<flen;i++) //得到小数部分数据
+ 268   1        {  
+ 269   2          z2[i] = buf[ilen+1+i];
+ 270   2        }   
+ 271   1      return  ilen;
+ 272   1      }                 
+ 273          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1367    ----
+   CONSTANT SIZE    =     12    ----
+   XDATA SIZE       =     18      42
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
